@@ -109,8 +109,16 @@ const Navbar = () => {
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 className="flex items-center gap-2.5 bg-orange-50/80 hover:bg-orange-100/80 border border-orange-200/60 text-gray-800 font-semibold px-3 py-1.5 rounded-full transition-all duration-200 shadow-sm"
               >
-                <div className="w-8 h-8 rounded-full bg-[#FA9132] text-white flex items-center justify-center font-bold text-sm shadow-inner">
-                  {initial}
+                <div className="w-8 h-8 rounded-full bg-[#FA9132] text-white flex items-center justify-center font-bold text-sm shadow-inner overflow-hidden shrink-0">
+                  {user.profilePic ? (
+                    <img 
+                      src={user.profilePic.startsWith('http') ? user.profilePic : `http://localhost:5001${user.profilePic}`} 
+                      alt="User avatar" 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    initial
+                  )}
                 </div>
                 <span className="text-xs md:text-sm font-bold text-gray-800 max-w-[120px] truncate">
                   {displayName}
@@ -128,10 +136,23 @@ const Navbar = () => {
               {/* Profile Dropdown */}
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-4 py-3 border-b border-gray-100 bg-orange-50/30">
-                    <p className="text-xs font-semibold text-gray-400">Signed in as</p>
-                    <p className="text-sm font-extrabold text-gray-900 truncate">{displayName}</p>
-                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                  <div className="px-4 py-3 border-b border-gray-100 bg-orange-50/30 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#FA9132] text-white flex items-center justify-center font-bold text-base shadow-sm overflow-hidden shrink-0">
+                      {user.profilePic ? (
+                        <img 
+                          src={user.profilePic.startsWith('http') ? user.profilePic : `http://localhost:5001${user.profilePic}`} 
+                          alt="User avatar" 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        initial
+                      )}
+                    </div>
+                    <div className="overflow-hidden">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Signed in</p>
+                      <p className="text-xs font-extrabold text-gray-900 truncate">{displayName}</p>
+                      <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
+                    </div>
                   </div>
 
                   <div className="py-1">

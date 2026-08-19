@@ -21,8 +21,8 @@ const Checkout = () => {
         setFormData((prev) => {
           let first = u.firstName || '';
           let last = u.lastName || '';
-          if (!first && u.name) {
-            const parts = u.name.split(' ');
+          if (!first && (u.fullName || u.name)) {
+            const parts = (u.fullName || u.name).trim().split(' ');
             first = parts[0] || '';
             last = parts.slice(1).join(' ') || '';
           }
@@ -31,7 +31,11 @@ const Checkout = () => {
             firstName: prev.firstName || first,
             lastName: prev.lastName || last,
             email: prev.email || u.email || '',
-            phone: prev.phone || u.phone || ''
+            phone: prev.phone || u.phone || '',
+            address: prev.address || u.address?.street || (typeof u.address === 'string' ? u.address : '') || '',
+            city: prev.city || u.address?.city || u.city || '',
+            postalCode: prev.postalCode || u.address?.postalCode || u.postalCode || '',
+            province: prev.province || u.address?.province || u.province || '',
           };
         });
       } catch (e) {}
@@ -56,8 +60,8 @@ const Checkout = () => {
         const u = JSON.parse(userStr);
         let first = u.firstName || '';
         let last = u.lastName || '';
-        if (!first && u.name) {
-          const parts = u.name.split(' ');
+        if (!first && (u.fullName || u.name)) {
+          const parts = (u.fullName || u.name).trim().split(' ');
           first = parts[0] || '';
           last = parts.slice(1).join(' ') || '';
         }
@@ -65,6 +69,10 @@ const Checkout = () => {
         initial.lastName = last;
         initial.email = u.email || '';
         initial.phone = u.phone || '';
+        initial.address = u.address?.street || (typeof u.address === 'string' ? u.address : '') || '';
+        initial.city = u.address?.city || u.city || '';
+        initial.postalCode = u.address?.postalCode || u.postalCode || '';
+        initial.province = u.address?.province || u.province || '';
       }
     } catch (e) {}
     return initial;

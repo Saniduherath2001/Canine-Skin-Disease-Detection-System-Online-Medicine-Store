@@ -8,8 +8,11 @@ const {
   resetPassword,
   getProfile,
   updateProfile,
+  uploadAvatar,
 } = require('../controllers/authController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { optionalAuth } = require('../middleware/authMiddleware');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -20,6 +23,8 @@ router.post('/forgot-password', forgotPassword);
 router.post('/verify-code', verifyCode);
 router.post('/reset-password', resetPassword);
 router.get('/me', authMiddleware, getProfile);
-router.put('/profile', updateProfile);
+router.get('/profile', optionalAuth, getProfile);
+router.put('/profile', optionalAuth, updateProfile);
+router.post('/profile/avatar', optionalAuth, upload.single('avatar'), uploadAvatar);
 
 module.exports = router;

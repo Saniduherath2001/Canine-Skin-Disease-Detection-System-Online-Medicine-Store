@@ -330,13 +330,13 @@ const ProductDetails = () => {
               )}
             </div>
 
-            {/* Item Code & Category */}
+            {/* ==============================Item Code & Category ================================*/}
             <p className="text-xs text-gray-500 mb-6">
 
               Category : {product.category}
             </p>
 
-            {/* Buttons */}
+            {/* ============================== Buttons ================================*/}
             <div className="flex flex-wrap items-center gap-4 mb-6">
               <button
                 disabled={product.stock === 0}
@@ -351,7 +351,7 @@ const ProductDetails = () => {
 
             </div>
 
-            {/* Info Checklist */}
+            {/* ============================== Info Checklist ================================*/}
             <div className="flex flex-col gap-1.5 text-xs text-gray-600">
               <div className="flex items-center gap-2">
                 <span>🚚</span> Free Delivery
@@ -368,7 +368,7 @@ const ProductDetails = () => {
           </div>
         </div>
 
-        {/* Description Section */}
+        {/* ============================== Description Section ================================*/}
         <div className="mt-4 pt-6 border-t border-gray-100">
           <h2 className="text-lg md:text-xl font-bold text-[#FA9132] mb-2">
             Description

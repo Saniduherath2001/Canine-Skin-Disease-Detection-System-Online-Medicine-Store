@@ -116,6 +116,9 @@ exports.register = async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         phone: user.phone,
+        profilePic: user.profilePic || '',
+        address: user.address || {},
+        bankDetails: user.bankDetails || {},
       },
     });
   } catch (error) {
@@ -154,6 +157,9 @@ exports.login = async (req, res) => {
         email: user.email,
         fullName: user.fullName || user.username,
         phone: user.phone || '',
+        profilePic: user.profilePic || '',
+        address: user.address || {},
+        bankDetails: user.bankDetails || {},
       },
     });
   } catch (error) {
@@ -273,7 +279,13 @@ exports.resetPassword = async (req, res) => {
 // 6. Get Current User Profile
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select('-password');
+    let user;
+    if (req.userId) {
+      user = await User.findById(req.userId).select('-password');
+    }
+    if (!user && req.query?.email) {
+      user = await User.findOne({ email: { $regex: new RegExp(`^${req.query.email.trim()}$`, 'i') } }).select('-password');
+    }
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -287,7 +299,7 @@ exports.getProfile = async (req, res) => {
 // 7. Update User Profile
 exports.updateProfile = async (req, res) => {
   try {
-    const { fullName, phone, email, _id } = req.body;
+    const { fullName, phone, email, _id, address, bankDetails, profilePic } = req.body;
 
     let user;
     if (req.userId) {
@@ -306,11 +318,32 @@ exports.updateProfile = async (req, res) => {
         email: email || 'user@example.com',
         password: 'Password123!',
         fullName: fullName || '',
-        phone: phone || ''
+        phone: phone || '',
+        profilePic: profilePic || (req.file ? `/uploads/${req.file.filename}` : ''),
+        address: address || {},
+        bankDetails: bankDetails || {}
       });
     } else {
       if (fullName !== undefined) user.fullName = fullName;
       if (phone !== undefined) user.phone = phone;
+      if (profilePic !== undefined) user.profilePic = profilePic;
+      if (req.file) user.profilePic = `/uploads/${req.file.filename}`;
+      if (address !== undefined && typeof address === 'object') {
+        user.address = {
+          street: address.street !== undefined ? address.street : (user.address?.street || ''),
+          city: address.city !== undefined ? address.city : (user.address?.city || ''),
+          postalCode: address.postalCode !== undefined ? address.postalCode : (user.address?.postalCode || ''),
+          province: address.province !== undefined ? address.province : (user.address?.province || '')
+        };
+      }
+      if (bankDetails !== undefined && typeof bankDetails === 'object') {
+        user.bankDetails = {
+          accountHolderName: bankDetails.accountHolderName !== undefined ? bankDetails.accountHolderName : (user.bankDetails?.accountHolderName || ''),
+          bankName: bankDetails.bankName !== undefined ? bankDetails.bankName : (user.bankDetails?.bankName || ''),
+          branchName: bankDetails.branchName !== undefined ? bankDetails.branchName : (user.bankDetails?.branchName || ''),
+          accountNumber: bankDetails.accountNumber !== undefined ? bankDetails.accountNumber : (user.bankDetails?.accountNumber || '')
+        };
+      }
     }
 
     await user.save();
@@ -321,6 +354,46 @@ exports.updateProfile = async (req, res) => {
   } catch (error) {
     console.error('Update Profile Error:', error.message);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+};
+
+// 8. Upload User Avatar / Profile Picture
+exports.uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please upload an image file' });
+    }
+
+    const { email, _id } = req.body;
+    let user;
+    if (req.userId) {
+      user = await User.findById(req.userId).catch(() => null);
+    }
+    if (!user && _id) {
+      user = await User.findById(_id).catch(() => null);
+    }
+    if (!user && email) {
+      user = await User.findOne({ email: { $regex: new RegExp(`^${email.trim()}$`, 'i') } });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    user.profilePic = `/uploads/${req.file.filename}`;
+    await user.save();
+
+    const updatedUser = user.toObject();
+    delete updatedUser.password;
+
+    res.json({
+      message: 'Profile picture updated successfully',
+      profilePic: user.profilePic,
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Upload Avatar Error:', error.message);
+    res.status(500).json({ error: 'Failed to upload profile picture' });
   }
 };
 
