@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/doggo_care';
+// Use reliable DNS servers to avoid querySrv ECONNREFUSED issues on Windows/ISPs
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4']);
+} catch (e) {}
+
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/petzone';
 
 const connectDB = async () => {
   try {

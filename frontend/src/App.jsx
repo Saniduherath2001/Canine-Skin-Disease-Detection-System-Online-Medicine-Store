@@ -55,6 +55,7 @@ function MainApp() {
           <Route path="/detect" element={<Detect />} />
           <Route path="/review" element={<Review />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/myorders" element={<Profile defaultTab="orders" />} />
         </Routes>
       </main>
       <Footer />

@@ -24,6 +24,8 @@ const Store = () => {
             name: item.name,
             description: item.description,
             price: `Rs. ${item.price}`,
+            rawPrice: typeof item.price === 'number' ? item.price : (parseFloat(String(item.price).replace(/[^0-9.-]+/g, '')) || 0),
+            deliveryFee: typeof item.deliveryFee === 'number' ? item.deliveryFee : (parseFloat(String(item.deliveryFee || 0).replace(/[^0-9.-]+/g, '')) || 0),
             image: item.imageUrl || '',
             category: item.category,
             stock: item.stock !== undefined ? item.stock : 10
@@ -43,7 +45,7 @@ const Store = () => {
     fetchProducts();
   }, []);
 
-  const handleAddToCart = (e, item) => {
+  const handleAddToCart = async (e, item) => {
     e.stopPropagation();
     e.preventDefault();
     
@@ -61,19 +63,34 @@ const Store = () => {
     if (item.stock <= 0) return; // Prevent adding out of stock items
     
     const cart = JSON.parse(localStorage.getItem('cart')) || [];
-    const existingIndex = cart.findIndex((i) => (i._id && item._id && i._id === item._id) || i.id === item.id || i.name === item.name);
-    const numericPrice = parseFloat(item.price.toString().replace(/[^0-9.-]+/g,"")) || 0;
+    const existingIndex = cart.findIndex((i) => (i._id && (item._id || item.id) && i._id === (item._id || item.id)) || i.id === item.id || i.name === item.name);
+    const numericPrice = item.rawPrice !== undefined
+      ? item.rawPrice
+      : (parseFloat(item.price.toString().replace(/[^0-9.-]+/g,"")) || 0);
     
+    const itemDeliveryFee = typeof item.deliveryFee === 'number' ? item.deliveryFee : 0;
+
     if (existingIndex > -1) {
-      cart[existingIndex].quantity += 1;
+      const currentQty = parseInt(cart[existingIndex].quantity, 10) || 1;
+      if (currentQty >= item.stock) {
+        setToastMessage(`⚠️ Only ${item.stock} available in stock for "${item.name}" (already in your cart).`);
+        setTimeout(() => setToastMessage(''), 2500);
+        return;
+      }
+      cart[existingIndex].quantity = currentQty + 1;
+      cart[existingIndex].price = numericPrice;
+      cart[existingIndex].deliveryFee = itemDeliveryFee;
+      cart[existingIndex].stock = item.stock;
     } else {
       cart.push({
-        _id: item._id,
+        _id: item._id || item.id,
         id: item.id,
         productId: item._id || item.id,
         name: item.name,
         category: item.category || 'General',
         price: numericPrice,
+        deliveryFee: itemDeliveryFee,
+        stock: item.stock,
         image: item.imageUrl || item.image,
         quantity: 1
       });
@@ -87,21 +104,26 @@ const Store = () => {
     }
 
     if (userEmail) {
-      fetch('http://localhost:5001/api/cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userEmail,
-          item: {
-            _id: item._id || item.id,
-            name: item.name,
-            price: numericPrice,
-            quantity: 1,
-            image: item.imageUrl || item.image || '',
-            description: item.description || ''
-          }
-        })
-      }).catch(err => console.error('Error saving cart to DB:', err));
+      try {
+        await fetch('http://localhost:5001/api/cart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userEmail,
+            item: {
+              _id: item._id || item.id,
+              name: item.name,
+              price: numericPrice,
+              deliveryFee: itemDeliveryFee,
+              quantity: 1,
+              image: item.imageUrl || item.image || '',
+              description: item.description || ''
+            }
+          })
+        });
+      } catch (err) {
+        console.error('Error saving cart to DB:', err);
+      }
     }
 
     setToastMessage(`Added ${item.name} to cart!`);
@@ -228,9 +250,14 @@ const Store = () => {
 
                 {/* ======================Price & Action Row================================== */}
                 <div className="flex items-center justify-between mt-auto pt-2">
-                  <span className="text-[#FA9132] font-extrabold text-lg md:text-xl">
-                    {item.price}
-                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-[#FA9132] font-extrabold text-lg md:text-xl">
+                      {item.price}
+                    </span>
+                    <span className="text-[11px] font-medium text-gray-500">
+                      {item.deliveryFee > 0 ? `+ Rs. ${item.deliveryFee.toLocaleString()} Delivery` : 'Free Delivery'}
+                    </span>
+                  </div>
                   <button
                     disabled={item.stock <= 0}
                     onClick={(e) => handleAddToCart(e, item)}

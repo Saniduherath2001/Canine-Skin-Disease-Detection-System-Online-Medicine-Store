@@ -3,6 +3,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const Diagnosis = require('../models/Diagnosis');
 const { FLASK_API_URL } = require('../config/constants');
+const { sendDiagnosisReportEmail } = require('../utils/emailService');
 
 const CARE_GUIDELINES = {
   Ringworm: [
@@ -180,6 +181,69 @@ exports.getDiagnosisById = async (req, res) => {
   } catch (error) {
     console.error('Get Diagnosis Error:', error.message);
     res.status(500).json({ error: 'Failed to fetch diagnosis record' });
+  }
+};
+
+exports.sendReport = async (req, res) => {
+  try {
+    const { email, petName, age, gender, disease, confidence, careGuidelines, symptoms } = req.body;
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Please provide a valid email address to send the report.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const finalDisease = disease || 'Healthy';
+    const finalConfidence = typeof confidence === 'number' ? confidence : 0.9;
+    const finalGuidelines = Array.isArray(careGuidelines) && careGuidelines.length > 0
+      ? careGuidelines
+      : (CARE_GUIDELINES[finalDisease] || CARE_GUIDELINES[finalDisease.toLowerCase()] || DEFAULT_GUIDELINES);
+
+    // Save diagnosis record into MongoDB
+    let savedDiagnosis = null;
+    try {
+      savedDiagnosis = await Diagnosis.create({
+        userId: req.userId || null,
+        userEmail: cleanEmail,
+        petName: petName || 'Buddy',
+        age: age || 'Unknown',
+        gender: gender || 'Unknown',
+        disease: finalDisease,
+        confidence: finalConfidence,
+        careGuidelines: finalGuidelines,
+        symptoms: symptoms || {},
+        date: new Date()
+      });
+    } catch (dbErr) {
+      console.warn('Could not save diagnosis record to DB:', dbErr.message);
+    }
+
+    // Send email with diagnosis and care guidelines
+    try {
+      const emailRes = await sendDiagnosisReportEmail(cleanEmail, {
+        petName: petName || 'Buddy',
+        age: age || 'Unknown',
+        gender: gender || 'Unknown',
+        disease: finalDisease,
+        confidence: finalConfidence,
+        careGuidelines: finalGuidelines,
+        diagnosisId: savedDiagnosis?._id
+      });
+
+      return res.json({
+        success: true,
+        message: `Diagnostic report successfully sent to ${cleanEmail}`,
+        diagnosisId: savedDiagnosis?._id,
+        emailSent: emailRes?.sent ?? false
+      });
+    } catch (mailErr) {
+      console.error('Email sending failed in detectController:', mailErr.message);
+      return res.status(500).json({
+        error: `Email sending failed: ${mailErr.message}`
+      });
+    }
+  } catch (error) {
+    console.error('Send Report Controller Error:', error);
+    res.status(500).json({ error: 'Failed to send diagnosis report: ' + error.message });
   }
 };
 

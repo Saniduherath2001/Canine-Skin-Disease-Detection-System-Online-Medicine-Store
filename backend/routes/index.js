@@ -24,4 +24,7 @@ router.use('/messages', messageRoutes);
 const cartRoutes = require('./cartRoutes');
 router.use('/cart', cartRoutes);
 
+const settingRoutes = require('./settingRoutes');
+router.use('/settings', settingRoutes);
+
 module.exports = router;

@@ -5,6 +5,7 @@ import jpgIcon from '../assets/jpg.png';
 
 const Detect = () => {
   const [currentStep, setCurrentStep] = useState(1);
+  // Steps: 1 = Upload, 1.5 = Confirm, 2 = Pet Info, 3 = Questions, 4 = Result
 
   // Step 1 State: Image Upload
   const [selectedFile, setSelectedFile] = useState(null);
@@ -13,11 +14,25 @@ const Detect = () => {
   const fileInputRef = useRef(null);
 
   // Step 2 State: Pet Information
-  const [petInfo, setPetInfo] = useState({
-    
-
+  const [petInfo, setPetInfo] = useState(() => {
+    let email = '';
+    try {
+      const u = JSON.parse(localStorage.getItem('user'));
+      if (u?.email) email = u.email;
+    } catch (e) {}
+    return {
+      name: '',
+      age: '',
+      gender: 'Select Gender',
+      email: email,
+    };
   });
   const [petInfoError, setPetInfoError] = useState('');
+
+  // Report Email Status
+  const [reportEmailStatus, setReportEmailStatus] = useState('idle');
+  const [reportEmailMessage, setReportEmailMessage] = useState('');
+  const [customReportEmail, setCustomReportEmail] = useState('');
 
   // Dynamic Sequential Question State
   const [apiLoading, setApiLoading] = useState(false);
@@ -83,17 +98,75 @@ const Detect = () => {
     setCurrentCandidateIndex(0);
     setCandidateAnswers({});
     setApiError('');
+    setReportEmailStatus('idle');
+    setReportEmailMessage('');
+    setCustomReportEmail('');
     setCurrentStep(1);
   };
 
-  // Step 1 -> Step 2
+  // Send diagnosis report and care guidelines to user via email
+  const sendReportEmail = async (prediction, targetEmail, guidelinesOverride) => {
+    const emailToSend = (targetEmail || petInfo.email || customReportEmail || '').trim();
+    if (!emailToSend) {
+      setReportEmailStatus('idle');
+      return;
+    }
+
+    setReportEmailStatus('sending');
+    setReportEmailMessage(`Sending diagnostic report to ${emailToSend}...`);
+
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const diseaseName = prediction?.disease || 'Healthy';
+      const guidelines = guidelinesOverride || allCareGuidelines[diseaseName] || allCareGuidelines[diseaseName.toLowerCase()] || [];
+
+      const res = await fetch('http://localhost:5001/api/detect/send-report', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          email: emailToSend,
+          petName: petInfo.name || 'Buddy',
+          age: petInfo.age || 'Unknown',
+          gender: petInfo.gender || 'Unknown',
+          disease: diseaseName,
+          confidence: prediction?.confidence || 0.95,
+          careGuidelines: guidelines,
+          symptoms: candidateAnswers,
+        }),
+      });
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        data = {};
+      }
+
+      if (res.ok) {
+        setReportEmailStatus('sent');
+        setReportEmailMessage(`Diagnosis report & care guidelines have been sent to ${emailToSend}!`);
+      } else {
+        setReportEmailStatus('error');
+        setReportEmailMessage(data.error || `Server responded with error ${res.status}. Please restart backend.`);
+      }
+    } catch (err) {
+      console.error('Error sending report:', err);
+      setReportEmailStatus('error');
+      setReportEmailMessage('Could not connect to backend server (port 5001). Please make sure backend is running: node backend/server.js');
+    }
+  };
+
+  // Step 1 -> Step 1.5 (Confirmation)
   const handleStep1Submit = (e) => {
     e.preventDefault();
     if (!selectedFile) {
       setUploadError('Please select or drag an image first.');
       return;
     }
-    setCurrentStep(2);
+    setCurrentStep(1.5);
   };
 
   // Step 2 -> Step 3 (Call backend to analyze image & fetch questions for candidates)
@@ -143,6 +216,9 @@ const Detect = () => {
       } else if (topDiseaseLower === 'healthy') {
         setConfirmedPrediction(topCand);
         setCurrentStep(4);
+        if (petInfo.email) {
+          sendReportEmail(topCand, petInfo.email, data.careGuidelines?.Healthy || data.careGuidelines?.healthy);
+        }
       } else {
         setDiseaseCandidates(candidates);
         setCurrentCandidateIndex(0);
@@ -175,6 +251,9 @@ const Detect = () => {
       // Confirmed disease!
       setConfirmedPrediction(currentCandidate);
       setCurrentStep(4);
+      if (petInfo.email) {
+        sendReportEmail(currentCandidate, petInfo.email);
+      }
     } else {
       const nextIdx = currentCandidateIndex + 1;
       if (nextIdx < 3 && nextIdx < diseaseCandidates.length) {
@@ -184,6 +263,9 @@ const Detect = () => {
         if (nextLower === 'healthy') {
           setConfirmedPrediction(nextCandidate);
           setCurrentStep(4);
+          if (petInfo.email) {
+            sendReportEmail(nextCandidate, petInfo.email);
+          }
         } else if (nextLower === 'others' || nextLower === 'notmatch' || nextLower === 'not match') {
           setConfirmedPrediction(null);
           setCurrentStep(4);
@@ -331,6 +413,65 @@ const Detect = () => {
         </div>
       )}
 
+      {/* STEP 1.5: Confirmation - Is this a dog skin image? */}
+      {currentStep === 1.5 && (
+        <div className="w-full max-w-[660px] bg-white rounded-[32px] md:rounded-[36px] shadow-[0_10px_35px_rgba(0,0,0,0.06)] border border-gray-100 p-8 md:p-12 flex flex-col items-center justify-center relative">
+          <h1 className="text-2xl md:text-3xl font-extrabold text-[#FA9132] tracking-wide text-center mb-2">
+            Confirm Your Image
+          </h1>
+          <p className="text-gray-500 text-xs md:text-sm text-center mb-6">
+            Please verify before continuing.
+          </p>
+
+          {/* Image Preview */}
+          {previewUrl && (
+            <div className="w-full flex justify-center mb-6">
+              <div className="relative">
+                <img
+                  src={previewUrl}
+                  alt="Uploaded Preview"
+                  className="max-h-60 max-w-full object-contain rounded-2xl shadow-md border border-gray-200"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* File name */}
+          <p className="text-xs text-gray-400 font-medium mb-6 text-center">
+            📄 {selectedFile?.name}
+          </p>
+
+          {/* Confirmation Question */}
+          <div className="w-full bg-[#FFF8F0] border border-[#FA9132]/30 rounded-2xl p-5 mb-8 text-center">
+            <span className="text-base md:text-lg font-extrabold text-gray-800">
+              Are you sure this image is a{' '}
+              <span className="text-[#FA9132]">dog skin</span> image?
+            </span>
+          </div>
+
+          {/* Yes / No Buttons */}
+          <div className="flex justify-center gap-5 w-full">
+            <button
+              type="button"
+              onClick={() => {
+                handleClearFile();
+                setCurrentStep(1);
+              }}
+              className="flex-1 max-w-[180px] bg-[#9E9E9E] hover:bg-gray-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-sm text-sm active:scale-95"
+            >
+              ✕ No, Go Back
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(2)}
+              className="flex-1 max-w-[180px] bg-[#FA9132] hover:bg-[#e07f28] text-white font-bold py-3.5 rounded-xl transition-all shadow-md text-sm active:scale-95"
+            >
+              ✓ Yes, Continue
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* STEP 2: Pet Information */}
       {currentStep === 2 && (
         <div className="w-full max-w-[660px] bg-white rounded-[32px] md:rounded-[36px] shadow-[0_10px_35px_rgba(0,0,0,0.06)] border border-gray-100 p-8 md:p-12 flex flex-col items-center justify-center relative">
@@ -383,6 +524,23 @@ const Detect = () => {
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-900 mb-1.5 flex items-center justify-between">
+                <span>Owner's Email <span className="text-[#FA9132] font-normal">(for Diagnostic Report)</span></span>
+                {petInfo.email && <span className="text-[11px] text-green-600 font-normal">✓ Auto-filled</span>}
+              </label>
+              <input
+                type="email"
+                value={petInfo.email}
+                onChange={(e) => setPetInfo({ ...petInfo, email: e.target.value })}
+                placeholder="Enter your email to receive the report"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#FA9132]"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">
+                We'll email you the complete diagnosis report with verified care guidelines.
+              </p>
             </div>
 
             {petInfoError && (
@@ -605,6 +763,85 @@ const Detect = () => {
                   <li key={idx}>{tip}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* Diagnostic Report Email & Print Section */}
+          {confirmedPrediction && (
+            <div className="w-full bg-[#FAFAFA] border border-gray-200 rounded-2xl p-5 mb-8 text-left shadow-sm">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📋</span>
+                  <div>
+                    <h3 className="text-sm md:text-base font-extrabold text-gray-900 leading-tight">
+                      Diagnostic Report & Care Guidelines
+                    </h3>
+                    <p className="text-[11px] text-gray-500">
+                      Send a complete summary copy directly to your email.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-bold py-1.5 px-3.5 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 whitespace-nowrap self-end sm:self-center"
+                  title="Print or Save as PDF"
+                >
+                  <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Print / Save PDF
+                </button>
+              </div>
+
+              {/* Status Banner */}
+              {reportEmailStatus === 'sent' && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 flex items-center gap-2.5 text-xs text-green-800">
+                  <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="font-semibold">
+                    {reportEmailMessage || 'Diagnostic report has been sent to your email!'}
+                  </span>
+                </div>
+              )}
+
+              {reportEmailStatus === 'sending' && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-3 flex items-center gap-2.5 text-xs text-orange-800">
+                  <svg className="animate-spin w-4 h-4 text-[#FA9132] flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                  </svg>
+                  <span className="font-semibold">
+                    {reportEmailMessage || 'Sending diagnostic report to your email...'}
+                  </span>
+                </div>
+              )}
+
+              {reportEmailStatus === 'error' && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-xs text-red-700 font-semibold">
+                  ⚠️ {reportEmailMessage}
+                </div>
+              )}
+
+              {/* Email Send Form */}
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <input
+                  type="email"
+                  value={customReportEmail || petInfo.email}
+                  onChange={(e) => setCustomReportEmail(e.target.value)}
+                  placeholder="Enter email to receive report"
+                  className="w-full sm:flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 bg-white text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#FA9132]"
+                />
+                <button
+                  type="button"
+                  onClick={() => sendReportEmail(confirmedPrediction, customReportEmail || petInfo.email)}
+                  disabled={reportEmailStatus === 'sending'}
+                  className="w-full sm:w-auto bg-[#FA9132] hover:bg-[#e07f28] text-white font-bold py-2.5 px-5 rounded-xl text-xs transition-all shadow-sm active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {reportEmailStatus === 'sending' ? 'Sending...' : 'Send to Email 📨'}
+                </button>
+              </div>
             </div>
           )}
 

@@ -1,6 +1,18 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Cart = require('../models/Cart');
+const Item = require('../models/Item');
+const Setting = require('../models/Setting');
+
+// Safe price parser to handle numeric, raw strings, and currency formatted strings
+const parsePrice = (val) => {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+};
 
 // GET /api/cart?email=<userEmail> - Get user's cart from MongoDB
 router.get('/', async (req, res) => {
@@ -14,6 +26,35 @@ router.get('/', async (req, res) => {
     if (!cart) {
       cart = await Cart.create({ userEmail: email.toLowerCase(), items: [] });
     }
+
+    // Always synchronize cart prices & common delivery fee with authoritative DB values
+    if (cart.items && cart.items.length > 0) {
+      const globalDeliveryFee = await Setting.getGlobalDeliveryFee();
+      let changed = false;
+      for (const cartItem of cart.items) {
+        let dbItem = null;
+        if (cartItem.productId && mongoose.Types.ObjectId.isValid(cartItem.productId)) {
+          dbItem = await Item.findById(cartItem.productId);
+        }
+        if (!dbItem && cartItem.name) {
+          dbItem = await Item.findOne({ name: cartItem.name });
+        }
+        if (dbItem && typeof dbItem.price === 'number' && dbItem.price > 0) {
+          if (cartItem.price !== dbItem.price) {
+            cartItem.price = dbItem.price;
+            changed = true;
+          }
+        }
+        if (cartItem.deliveryFee !== globalDeliveryFee) {
+          cartItem.deliveryFee = globalDeliveryFee;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await cart.save();
+      }
+    }
+
     res.json(cart);
   } catch (error) {
     console.error('Error fetching cart:', error);
@@ -40,17 +81,55 @@ router.post('/', async (req, res) => {
       (i) => (i.productId && item._id && i.productId === String(item._id)) || i.name === item.name
     );
 
-    const qtyToAdd = Number(item.quantity) || 1;
-    const itemPrice = Number(item.price) || 0;
-    const itemImg = item.image || item.imageUrl || '';
+    // Look up authoritative item from DB
+    const lookupId = item._id || item.productId || item.id;
+    let dbItem = null;
+    if (lookupId && mongoose.Types.ObjectId.isValid(lookupId)) {
+      dbItem = await Item.findById(lookupId);
+    }
+    if (!dbItem && item.name) {
+      dbItem = await Item.findOne({ name: item.name });
+    }
+
+    let authoritativePrice = parsePrice(item.price);
+    if (dbItem && typeof dbItem.price === 'number' && dbItem.price > 0) {
+      authoritativePrice = dbItem.price;
+    }
+
+    const authoritativeDeliveryFee = await Setting.getGlobalDeliveryFee();
+
+    const qtyToAdd = Math.max(1, parseInt(item.quantity, 10) || 1);
+    const itemImg = item.image || item.imageUrl || (dbItem ? dbItem.imageUrl : '');
+    const maxStock = dbItem && typeof dbItem.stock === 'number' ? dbItem.stock : null;
+
+    if (maxStock !== null && maxStock <= 0) {
+      return res.status(400).json({ message: `"${dbItem.name}" is currently out of stock.`, maxStock: 0 });
+    }
 
     if (existingIndex > -1) {
-      cart.items[existingIndex].quantity += qtyToAdd;
+      const currentQty = parseInt(cart.items[existingIndex].quantity, 10) || 1;
+      const desiredQty = currentQty + qtyToAdd;
+      if (maxStock !== null && desiredQty > maxStock) {
+        return res.status(400).json({
+          message: `Only ${maxStock} available in stock for "${dbItem.name}".`,
+          maxStock,
+        });
+      }
+      cart.items[existingIndex].quantity = desiredQty;
+      cart.items[existingIndex].price = authoritativePrice;
+      cart.items[existingIndex].deliveryFee = authoritativeDeliveryFee;
     } else {
+      if (maxStock !== null && qtyToAdd > maxStock) {
+        return res.status(400).json({
+          message: `Only ${maxStock} available in stock for "${dbItem.name}".`,
+          maxStock,
+        });
+      }
       cart.items.push({
-        productId: item._id ? String(item._id) : (item.productId || ''),
-        name: item.name,
-        price: itemPrice,
+        productId: dbItem ? String(dbItem._id) : (lookupId ? String(lookupId) : ''),
+        name: dbItem ? dbItem.name : item.name,
+        price: authoritativePrice,
+        deliveryFee: authoritativeDeliveryFee,
         quantity: qtyToAdd,
         image: itemImg,
         description: item.description || ''
@@ -80,15 +159,41 @@ router.put('/', async (req, res) => {
       cart = new Cart({ userEmail: email, items: [] });
     }
 
-    cart.items = items.map((i) => ({
-      productId: i.productId || (i._id ? String(i._id) : ''),
-      name: i.name,
-      price: Number(i.price) || 0,
-      quantity: Number(i.quantity) || 1,
-      image: i.image || i.imageUrl || '',
-      description: i.description || ''
-    }));
+    const globalDeliveryFee = await Setting.getGlobalDeliveryFee();
+    const updatedItems = [];
+    for (const i of items) {
+      const lookupId = i.productId || (i._id ? String(i._id) : (i.id || ''));
+      let dbItem = null;
+      if (lookupId && mongoose.Types.ObjectId.isValid(lookupId)) {
+        dbItem = await Item.findById(lookupId);
+      }
+      if (!dbItem && i.name) {
+        dbItem = await Item.findOne({ name: i.name });
+      }
 
+      let authoritativePrice = parsePrice(i.price);
+      if (dbItem && typeof dbItem.price === 'number' && dbItem.price > 0) {
+        authoritativePrice = dbItem.price;
+      }
+
+      const authoritativeDeliveryFee = globalDeliveryFee;
+      const requestedQty = Math.max(1, parseInt(i.quantity, 10) || 1);
+      const clampedQty = (dbItem && typeof dbItem.stock === 'number' && dbItem.stock > 0)
+        ? Math.min(requestedQty, dbItem.stock)
+        : requestedQty;
+
+      updatedItems.push({
+        productId: dbItem ? String(dbItem._id) : lookupId,
+        name: dbItem ? dbItem.name : i.name,
+        price: authoritativePrice,
+        deliveryFee: authoritativeDeliveryFee,
+        quantity: clampedQty,
+        image: i.image || i.imageUrl || (dbItem ? dbItem.imageUrl : ''),
+        description: i.description || ''
+      });
+    }
+
+    cart.items = updatedItems;
     cart.updatedAt = new Date();
     await cart.save();
     res.json(cart);

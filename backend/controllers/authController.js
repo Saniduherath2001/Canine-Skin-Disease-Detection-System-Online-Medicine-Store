@@ -299,7 +299,11 @@ exports.getProfile = async (req, res) => {
 // 7. Update User Profile
 exports.updateProfile = async (req, res) => {
   try {
-    const { fullName, phone, email, _id, address, bankDetails, profilePic } = req.body;
+    const { fullName, phone, email, _id, address, cardDetails, bankDetails, profilePic } = req.body;
+
+    if (address && address.postalCode && !/^[0-9]{5}$/.test(String(address.postalCode).trim())) {
+      return res.status(400).json({ error: 'Postal code must be exactly 5 digits (e.g. 10100).' });
+    }
 
     let user;
     if (req.userId) {
@@ -321,6 +325,7 @@ exports.updateProfile = async (req, res) => {
         phone: phone || '',
         profilePic: profilePic || (req.file ? `/uploads/${req.file.filename}` : ''),
         address: address || {},
+        cardDetails: cardDetails || {},
         bankDetails: bankDetails || {}
       });
     } else {
@@ -332,8 +337,16 @@ exports.updateProfile = async (req, res) => {
         user.address = {
           street: address.street !== undefined ? address.street : (user.address?.street || ''),
           city: address.city !== undefined ? address.city : (user.address?.city || ''),
-          postalCode: address.postalCode !== undefined ? address.postalCode : (user.address?.postalCode || ''),
+          postalCode: address.postalCode !== undefined ? String(address.postalCode).trim() : (user.address?.postalCode || ''),
           province: address.province !== undefined ? address.province : (user.address?.province || '')
+        };
+      }
+      if (cardDetails !== undefined && typeof cardDetails === 'object') {
+        user.cardDetails = {
+          cardHolderName: cardDetails.cardHolderName !== undefined ? cardDetails.cardHolderName : (user.cardDetails?.cardHolderName || ''),
+          cardNumber: cardDetails.cardNumber !== undefined ? cardDetails.cardNumber : (user.cardDetails?.cardNumber || ''),
+          expiryDate: cardDetails.expiryDate !== undefined ? cardDetails.expiryDate : (user.cardDetails?.expiryDate || ''),
+          cardType: cardDetails.cardType !== undefined ? cardDetails.cardType : (user.cardDetails?.cardType || '')
         };
       }
       if (bankDetails !== undefined && typeof bankDetails === 'object') {
@@ -353,6 +366,10 @@ exports.updateProfile = async (req, res) => {
     res.json({ message: 'Profile updated successfully', user: updatedUser });
   } catch (error) {
     console.error('Update Profile Error:', error.message);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e) => e.message).join(', ');
+      return res.status(400).json({ error: messages });
+    }
     res.status(500).json({ error: 'Failed to update profile' });
   }
 };

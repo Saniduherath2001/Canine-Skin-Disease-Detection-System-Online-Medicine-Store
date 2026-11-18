@@ -59,8 +59,7 @@ const Navbar = () => {
   };
 
   const linkClass = ({ isActive }) =>
-    `font-inria text-[16px] px-2 transition-colors duration-200 ${
-      isActive ? 'text-[#FA9132] font-semibold' : 'text-[#4A4A4A] hover:text-[#FA9132] font-normal'
+    `font-inria text-[16px] px-2 transition-colors duration-200 ${isActive ? 'text-[#FA9132] font-semibold' : 'text-[#4A4A4A] hover:text-[#FA9132] font-normal'
     }`;
 
   const displayName = user?.fullName || user?.username || 'User';
@@ -78,6 +77,8 @@ const Navbar = () => {
 
         {/* Centered Navigation Links */}
         <div className="hidden md:flex items-center gap-12 absolute left-1/2 transform -translate-x-1/2">
+          <NavLink to="/" className={linkClass}>Home</NavLink>
+
           <NavLink to="/store" className={linkClass}>Store</NavLink>
           <NavLink to="/about" className={linkClass}>About Us</NavLink>
           <NavLink to="/contact" className={linkClass}>Contact Us</NavLink>
@@ -89,8 +90,7 @@ const Navbar = () => {
             <NavLink
               to="/cart"
               className={({ isActive }) =>
-                `flex items-center gap-1.5 text-[16px] transition-colors ${
-                  isActive ? 'text-[#FA9132] font-semibold' : 'text-[#FA9132] hover:text-[#d3721c] font-normal'
+                `flex items-center gap-1.5 text-[16px] transition-colors ${isActive ? 'text-[#FA9132] font-semibold' : 'text-[#FA9132] hover:text-[#d3721c] font-normal'
                 }`
               }
             >
@@ -111,9 +111,9 @@ const Navbar = () => {
               >
                 <div className="w-8 h-8 rounded-full bg-[#FA9132] text-white flex items-center justify-center font-bold text-sm shadow-inner overflow-hidden shrink-0">
                   {user.profilePic ? (
-                    <img 
-                      src={user.profilePic.startsWith('http') ? user.profilePic : `http://localhost:5001${user.profilePic}`} 
-                      alt="User avatar" 
+                    <img
+                      src={user.profilePic.startsWith('http') ? user.profilePic : `http://localhost:5001${user.profilePic}`}
+                      alt="User avatar"
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -139,9 +139,9 @@ const Navbar = () => {
                   <div className="px-4 py-3 border-b border-gray-100 bg-orange-50/30 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#FA9132] text-white flex items-center justify-center font-bold text-base shadow-sm overflow-hidden shrink-0">
                       {user.profilePic ? (
-                        <img 
-                          src={user.profilePic.startsWith('http') ? user.profilePic : `http://localhost:5001${user.profilePic}`} 
-                          alt="User avatar" 
+                        <img
+                          src={user.profilePic.startsWith('http') ? user.profilePic : `http://localhost:5001${user.profilePic}`}
+                          alt="User avatar"
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -168,25 +168,26 @@ const Navbar = () => {
                     </NavLink>
 
                     <NavLink
-                      to="/detect"
+                      to="/cart"
                       onClick={() => setDropdownOpen(false)}
                       className="flex items-center gap-2.5 px-4 py-2 text-xs md:text-sm text-gray-700 hover:bg-orange-50 hover:text-[#FA9132] font-semibold transition-colors"
                     >
                       <svg className="w-4 h-4 text-[#FA9132]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Disease Detection
+                      Cart
                     </NavLink>
 
                     <NavLink
-                      to="/store"
+                      to="/profile?tab=orders"
+                      state={{ tab: 'orders' }}
                       onClick={() => setDropdownOpen(false)}
                       className="flex items-center gap-2.5 px-4 py-2 text-xs md:text-sm text-gray-700 hover:bg-orange-50 hover:text-[#FA9132] font-semibold transition-colors"
                     >
                       <svg className="w-4 h-4 text-[#FA9132]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                       </svg>
-                      Medicine Store
+                      My Orders
                     </NavLink>
                   </div>
 
@@ -208,11 +209,10 @@ const Navbar = () => {
           ) : (
             /* Logged Out - Show Sign In / Sign Up */
             <>
-              <NavLink 
-                to="/login" 
+              <NavLink
+                to="/login"
                 className={({ isActive }) =>
-                  `font-inria text-[16px] transition-colors ${
-                    isActive ? 'text-[#FA9132] font-semibold' : 'text-[#FA9132] hover:text-[#d3721c] font-normal'
+                  `font-inria text-[16px] transition-colors ${isActive ? 'text-[#FA9132] font-semibold' : 'text-[#FA9132] hover:text-[#d3721c] font-normal'
                   }`
                 }
               >
@@ -222,8 +222,7 @@ const Navbar = () => {
               <NavLink
                 to="/register"
                 className={({ isActive }) =>
-                  `font-inria text-[16px] transition-colors ${
-                    isActive ? 'text-[#FA9132] font-semibold' : 'text-[#FA9132] hover:text-[#d3721c] font-normal'
+                  `font-inria text-[16px] transition-colors ${isActive ? 'text-[#FA9132] font-semibold' : 'text-[#FA9132] hover:text-[#d3721c] font-normal'
                   }`
                 }
               >

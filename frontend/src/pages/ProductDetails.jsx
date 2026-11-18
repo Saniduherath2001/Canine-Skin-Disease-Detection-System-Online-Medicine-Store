@@ -29,7 +29,9 @@ const ProductDetails = () => {
             itemId: item.itemId || `ITM_000`,
             name: item.name,
             description: item.description,
-            price: `$${item.price}`,
+            price: `Rs. ${item.price}`,
+            rawPrice: typeof item.price === 'number' ? item.price : (parseFloat(String(item.price).replace(/[^0-9.-]+/g, '')) || 0),
+            deliveryFee: typeof item.deliveryFee === 'number' ? item.deliveryFee : (parseFloat(String(item.deliveryFee || 0).replace(/[^0-9.-]+/g, '')) || 0),
             image: item.imageUrl || '',
             additionalImages: item.additionalImages || [],
             category: item.category,
@@ -80,11 +82,20 @@ const ProductDetails = () => {
   };
 
   const handleIncrease = () => {
+    if (product && quantity >= product.stock) {
+      showToast(`⚠️ Only ${product.stock} items available in stock!`);
+      return;
+    }
     setQuantity((prev) => prev + 1);
   };
 
   const handleAddToCart = async () => {
     if (!product) return;
+
+    if (product.stock <= 0) {
+      showToast('❌ This item is currently out of stock.');
+      return;
+    }
 
     // Enforce Sign In before purchasing
     const token = localStorage.getItem('token');
@@ -101,11 +112,28 @@ const ProductDetails = () => {
     const existingIndex = cart.findIndex(
       (i) => (i._id && product.id && i._id === product.id) || i.id === product.id || i.name === product.name
     );
-    const numericPrice = parseFloat(product.price.toString().replace(/[^0-9.-]+/g, '')) || 0;
+    const numericPrice = product.rawPrice !== undefined
+      ? product.rawPrice
+      : (parseFloat(product.price.toString().replace(/[^0-9.-]+/g, '')) || 0);
+
+    const itemDeliveryFee = typeof product.deliveryFee === 'number' ? product.deliveryFee : 0;
+    const qtyToAdd = parseInt(quantity, 10) || 1;
 
     if (existingIndex > -1) {
-      cart[existingIndex].quantity += quantity;
+      const currentQty = parseInt(cart[existingIndex].quantity, 10) || 1;
+      if (currentQty + qtyToAdd > product.stock) {
+        showToast(`⚠️ Only ${product.stock} available in stock (${currentQty} already in your cart).`);
+        return;
+      }
+      cart[existingIndex].quantity = currentQty + qtyToAdd;
+      cart[existingIndex].price = numericPrice;
+      cart[existingIndex].deliveryFee = itemDeliveryFee;
+      cart[existingIndex].stock = product.stock;
     } else {
+      if (qtyToAdd > product.stock) {
+        showToast(`⚠️ Only ${product.stock} available in stock.`);
+        return;
+      }
       cart.push({
         _id: product.id,
         id: product.id,
@@ -113,8 +141,10 @@ const ProductDetails = () => {
         name: product.name,
         category: product.category || 'General',
         price: numericPrice,
+        deliveryFee: itemDeliveryFee,
+        stock: product.stock,
         image: product.image,
-        quantity: quantity,
+        quantity: qtyToAdd,
       });
     }
 
@@ -140,6 +170,7 @@ const ProductDetails = () => {
               _id: product.id,
               name: product.name,
               price: numericPrice,
+              deliveryFee: itemDeliveryFee,
               quantity: quantity,
               image: product.image || '',
               description: product.description || '',
@@ -292,17 +323,20 @@ const ProductDetails = () => {
               {product.name}
             </h1>
 
-            {/* Rating */}
-            <div className="flex items-center gap-2 mb-3">
-              {renderStars(product.rating || 5)}
-              <span className="text-xs text-gray-500 font-medium">
-                ({product.rating || 5}/5 | {product.reviewsCount || 100} Reviews)
-              </span>
-            </div>
+
 
             {/* Price */}
-            <div className="text-2xl md:text-3xl font-extrabold text-[#FA9132] mb-2">
+            <div className="text-2xl md:text-3xl font-extrabold text-[#FA9132] mb-1">
               {product.price}
+            </div>
+
+            {/* Delivery Fee */}
+            <div className="text-xs font-semibold text-gray-500 mb-3">
+              {product.deliveryFee > 0 ? (
+                <span>🚚 Delivery Fee: <strong className="text-gray-800">Rs. {product.deliveryFee.toLocaleString()}</strong></span>
+              ) : (
+                <span className="text-emerald-600">🚚 Free Delivery</span>
+              )}
             </div>
 
             {/* Stock */}
@@ -330,11 +364,7 @@ const ProductDetails = () => {
               )}
             </div>
 
-            {/* ==============================Item Code & Category ================================*/}
-            <p className="text-xs text-gray-500 mb-6">
 
-              Category : {product.category}
-            </p>
 
             {/* ============================== Buttons ================================*/}
             <div className="flex flex-wrap items-center gap-4 mb-6">
@@ -353,17 +383,13 @@ const ProductDetails = () => {
 
             {/* ============================== Info Checklist ================================*/}
             <div className="flex flex-col gap-1.5 text-xs text-gray-600">
-              <div className="flex items-center gap-2">
-                <span>🚚</span> Free Delivery
-              </div>
+
               <div className="flex items-center gap-2">
                 <span>🔒</span> Secure Payment
               </div>
-              {product.stock > 0 && (
-                <div className="flex items-center gap-2">
-                  <span>🎁</span> {product.stock < 10 ? `Only ${product.stock} items left` : `${product.stock} items available`}
-                </div>
-              )}
+
+
+
             </div>
           </div>
         </div>

@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 module.exports = {
   SMTP_HOST: process.env.SMTP_HOST || '',
   SMTP_PORT: Number(process.env.SMTP_PORT) || 587,

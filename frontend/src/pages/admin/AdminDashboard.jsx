@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FiUsers, 
-  FiPackage, 
-  FiStar, 
-  FiSearch, 
-  FiPlus, 
-  FiX, 
+import {
+  FiUsers,
+  FiPackage,
+  FiStar,
+  FiSearch,
+  FiPlus,
+  FiX,
   FiLogOut,
   FiEdit,
   FiTrash2,
@@ -28,23 +28,23 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modals & Popups
+  //===========================  Modals & Popups========================
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [viewingOrderDetails, setViewingOrderDetails] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Live Chat State for Admin
+  //============================== Live Chat State for Admin==========================
   const [conversations, setConversations] = useState([]);
   const [selectedChatEmail, setSelectedChatEmail] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
   const [adminReplyInput, setAdminReplyInput] = useState('');
   const adminChatContainerRef = useRef(null);
 
-  // Find active conversation object
+  //============================ Find active conversation object=======================================
   const selectedConversation = conversations.find(c => c._id === selectedChatEmail);
 
-  // --- STATE DATA ---
+  //=================================== STATE DATA=====================================================
   const [users, setUsers] = useState([
     { id: '001', name: 'John Silva', email: 'john@gmail.com', phone: '0712345678', status: 'Active' },
     { id: '002', name: 'Emily Perera', email: 'emily@gmail.com', phone: '0774561230', status: 'Blocked' },
@@ -54,7 +54,7 @@ const AdminDashboard = () => {
 
   const [inventory, setInventory] = useState([]);
 
-  // Fetch inventory, orders, feedback and chat conversations from backend on mount
+  //======================== Fetch inventory, orders, feedback and chat conversations from backend on mount========================
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -90,6 +90,21 @@ const AdminDashboard = () => {
       }
     };
 
+    const fetchGlobalDeliveryFee = async () => {
+      try {
+        const res = await fetch('http://localhost:5001/api/settings/delivery-fee');
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.deliveryFee === 'number') {
+            setGlobalDeliveryFee(data.deliveryFee);
+            setDeliveryFeeInput(String(data.deliveryFee));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch global delivery fee:', err);
+      }
+    };
+
     const fetchOrders = async () => {
       try {
         const res = await fetch('http://localhost:5001/api/orders');
@@ -108,7 +123,9 @@ const AdminDashboard = () => {
             discount: o.discount,
             totalNum: o.total,
             total: `Rs. ${o.total ? o.total.toLocaleString() : 0}`,
-            payment: o.paymentMethod === 'cod' ? 'COD' : (o.paymentMethod || 'Paid'),
+            payment: o.paymentMethod === 'card'
+              ? `Card (${o.paymentStatus || 'Paid'})`
+              : (o.paymentMethod === 'cod' ? 'COD' : (o.paymentMethod || 'Paid')),
             status: o.status,
             createdAt: o.createdAt
           }));
@@ -162,6 +179,7 @@ const AdminDashboard = () => {
 
     fetchUsers();
     fetchInventory();
+    fetchGlobalDeliveryFee();
     fetchOrders();
     fetchFeedback();
     fetchConversations();
@@ -170,7 +188,7 @@ const AdminDashboard = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Poll for messages when a customer chat is selected
+  //================ Poll for messages when a customer chat is selected======================================================
   useEffect(() => {
     if (!selectedChatEmail || typeof selectedChatEmail !== 'string') return;
 
@@ -294,19 +312,25 @@ const AdminDashboard = () => {
   const [orders, setOrders] = useState([]);
   const [feedback, setFeedback] = useState([]);
 
-  // --- FORM STATES ---
-  // Inventory Form State
-  const [itemForm, setItemForm] = useState({ itemCode: '', name: '', category: '', price: '', stock: '', description: '' });
+  //======================================== FORM STATES==============================================
+  //==================================   Delivery Fee State (common for all items) =====================================
+  const [globalDeliveryFee, setGlobalDeliveryFee] = useState(350);
+  const [deliveryFeeInput, setDeliveryFeeInput] = useState('350');
+  const [savingDeliveryFee, setSavingDeliveryFee] = useState(false);
+
+  //======================================= Inventory Form State =====================================
+  const [itemForm, setItemForm] = useState({ _id: '', itemCode: '', name: '', category: '', price: '', stock: '', description: '' });
   const [imageFile, setImageFile] = useState(null);
   const [additionalFiles, setAdditionalFiles] = useState([]);
 
-  // Order Status Form State
-  const [orderForm, setOrderForm] = useState({ orderId: '', dbId: '', customerName: '', status: '', notes: '' });
+  //======================================= Order Status Modal State =====================================
+  const [modalOrderStatus, setModalOrderStatus] = useState('');
+  const [updatingOrderStatus, setUpdatingOrderStatus] = useState(false);
 
-  // Feedback Details Form State
+  //======================================= Feedback Details Form State =====================================
   const [feedbackForm, setFeedbackForm] = useState({ customerName: '', productName: '', rating: '', comment: '' });
 
-  // Add User Modal State
+  //======================================= Add User Modal State =====================================
   const [newUserForm, setNewUserForm] = useState({ name: '', email: '', phone: '', status: 'Active' });
 
   const triggerToast = (msg) => {
@@ -314,11 +338,65 @@ const AdminDashboard = () => {
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  // Handlers
+  //======================================== Handlers====================================================
+  const handleSaveGlobalDeliveryFee = async (e) => {
+    e.preventDefault();
+    const parsedFee = parseFloat(deliveryFeeInput);
+    if (isNaN(parsedFee) || parsedFee < 0) {
+      triggerToast('Please enter a valid delivery fee (0 or higher).');
+      return;
+    }
+
+    setSavingDeliveryFee(true);
+    try {
+      const res = await fetch('http://localhost:5001/api/settings/delivery-fee', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deliveryFee: parsedFee }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const updatedFee = typeof data.deliveryFee === 'number' ? data.deliveryFee : parsedFee;
+        setGlobalDeliveryFee(updatedFee);
+        setDeliveryFeeInput(String(updatedFee));
+        setInventory((prev) => prev.map((item) => ({ ...item, deliveryFee: updatedFee })));
+        triggerToast(
+          updatedFee > 0
+            ? `Global Delivery Fee updated to Rs. ${updatedFee.toLocaleString()} for all items!`
+            : 'Global Delivery Fee updated to Free Delivery for all items!'
+        );
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        triggerToast(errData.message || 'Failed to update delivery fee.');
+      }
+    } catch (err) {
+      console.error('Error updating global delivery fee:', err);
+      triggerToast('Server error while updating delivery fee.');
+    } finally {
+      setSavingDeliveryFee(false);
+    }
+  };
+
   const handleSaveInventoryItem = async (e) => {
     e.preventDefault();
-    if (!itemForm.name || !itemForm.price) return;
-    
+    if (!itemForm.name.trim()) {
+      triggerToast('Please enter the pet item name.');
+      return;
+    }
+
+    const parsedPrice = parseFloat(itemForm.price);
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      triggerToast('Price must be greater than 0 (cannot be negative or 0).');
+      return;
+    }
+
+    const parsedStock = itemForm.stock === '' ? 0 : parseInt(itemForm.stock, 10);
+    if (isNaN(parsedStock) || parsedStock < 0) {
+      triggerToast('Stock quantity must be 0 or greater (cannot be negative).');
+      return;
+    }
+
     try {
       const formData = new FormData();
       if (itemForm.itemCode) {
@@ -326,10 +404,10 @@ const AdminDashboard = () => {
       }
       formData.append('name', itemForm.name);
       formData.append('category', itemForm.category || 'General');
-      formData.append('price', itemForm.price);
-      formData.append('stock', parseInt(itemForm.stock) || 10);
-      formData.append('description', itemForm.description);
-      
+      formData.append('price', parsedPrice);
+      formData.append('stock', parsedStock);
+      formData.append('description', itemForm.description || '');
+
       if (imageFile) {
         formData.append('image', imageFile);
       }
@@ -338,15 +416,26 @@ const AdminDashboard = () => {
         formData.append('additionalImages', file);
       });
 
-      const res = await fetch('http://localhost:5001/api/items', {
-        method: 'POST',
+      const url = itemForm._id
+        ? `http://localhost:5001/api/items/${itemForm._id}`
+        : 'http://localhost:5001/api/items';
+      const method = itemForm._id ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         body: formData // No Content-Type header, browser sets it for FormData
       });
 
       if (res.ok) {
         const savedItem = await res.json();
-        setInventory([savedItem, ...inventory]); // Add to top of list
-        setItemForm({ itemCode: '', name: '', category: '', price: '', stock: '', description: '' });
+        if (itemForm._id) {
+          setInventory(inventory.map(x => (x._id === itemForm._id || x.id === itemForm._id) ? savedItem : x));
+          triggerToast(`Item "${savedItem.name}" updated successfully!`);
+        } else {
+          setInventory([savedItem, ...inventory]); // Add to top of list
+          triggerToast('Pet item saved successfully!');
+        }
+        setItemForm({ _id: '', itemCode: '', name: '', category: '', price: '', stock: '', description: '' });
         setImageFile(null); // Reset file input
         setAdditionalFiles([]); // Reset additional files
         // Also reset the actual file input DOM elements
@@ -354,7 +443,6 @@ const AdminDashboard = () => {
         if (fileInput) fileInput.value = "";
         const additionalInput = document.getElementById('item-additional-upload');
         if (additionalInput) additionalInput.value = "";
-        triggerToast('Pet item saved successfully!');
       } else {
         triggerToast('Failed to save item.');
       }
@@ -364,33 +452,80 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteItem = async (item) => {
+    const targetId = item._id || item.id;
+    if (!targetId) return;
+
+    if (!window.confirm(`Are you sure you want to delete "${item.name}" from the database?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:5001/api/items/${targetId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        setInventory(prev => prev.filter(x => (x._id || x.id) !== targetId));
+        triggerToast(`Item "${item.name}" deleted from database.`);
+      } else {
+        const data = await res.json();
+        triggerToast(`❌ Failed to delete: ${data.message || 'Server error'}`);
+      }
+    } catch (err) {
+      console.error('Error deleting item from DB:', err);
+      triggerToast('❌ Server error deleting item.');
+    }
+  };
+
+  const handleOpenOrderDetails = (order) => {
+    setViewingOrderDetails(order);
+    const allowedStatuses = ['Pending', 'Delivered', 'Cancelled'];
+    setModalOrderStatus(allowedStatuses.includes(order.status) ? order.status : 'Pending');
+  };
+
   const handleUpdateOrderStatus = async (e) => {
     e.preventDefault();
-    if (!orderForm.orderId) return;
+    if (!viewingOrderDetails) return;
 
-    const targetOrder = orders.find(o => o.id === orderForm.orderId || o.dbId === orderForm.orderId);
-    const targetId = targetOrder ? targetOrder.dbId : orderForm.orderId;
-    
+    if (viewingOrderDetails.status === 'Delivered') {
+      triggerToast('This order is already Delivered and its status cannot be changed.');
+      return;
+    }
+
+    if (!modalOrderStatus || modalOrderStatus === viewingOrderDetails.status) {
+      triggerToast('Please select a different status to update.');
+      return;
+    }
+
+    const targetId = viewingOrderDetails.dbId || viewingOrderDetails.id;
+    setUpdatingOrderStatus(true);
+
     try {
       const res = await fetch(`http://localhost:5001/api/orders/${targetId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ status: orderForm.status })
+        body: JSON.stringify({ status: modalOrderStatus })
       });
 
       if (res.ok) {
         const updatedOrder = await res.json();
-        setOrders(orders.map(o => (o.id === orderForm.orderId || o.dbId === targetId) ? { ...o, status: updatedOrder.status } : o));
-        triggerToast(`Order status updated successfully!`);
-        setOrderForm({ orderId: '', dbId: '', customerName: '', status: '', notes: '' });
+        const newStatus = updatedOrder.status || modalOrderStatus;
+        setOrders(prev => prev.map(o => (o.id === viewingOrderDetails.id || o.dbId === targetId) ? { ...o, status: newStatus } : o));
+        setViewingOrderDetails(prev => prev ? { ...prev, status: newStatus } : null);
+        setModalOrderStatus(newStatus);
+        triggerToast(`Order #${viewingOrderDetails.id} status updated to ${newStatus}!`);
       } else {
-        triggerToast('Failed to update order status.');
+        const errData = await res.json().catch(() => ({}));
+        triggerToast(errData.message || 'Failed to update order status.');
       }
     } catch (err) {
       console.error('Error updating order:', err);
       triggerToast('Server error while updating order.');
+    } finally {
+      setUpdatingOrderStatus(false);
     }
   };
 
@@ -423,7 +558,7 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen flex bg-[#f8f9fa] font-sans antialiased text-gray-800 select-none">
-      
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-medium animate-bounce">
@@ -455,11 +590,10 @@ const AdminDashboard = () => {
               <button
                 key={item.label}
                 onClick={() => setActiveTab(item.label)}
-                className={`w-full text-left px-4 py-3 rounded-xl text-base font-semibold transition duration-150 flex items-center justify-between ${
-                  isActive
-                    ? 'bg-white/25 text-white shadow-inner'
-                    : 'text-white/90 hover:bg-white/10'
-                }`}
+                className={`w-full text-left px-4 py-3 rounded-xl text-base font-semibold transition duration-150 flex items-center justify-between ${isActive
+                  ? 'bg-white/25 text-white shadow-inner'
+                  : 'text-white/90 hover:bg-white/10'
+                  }`}
               >
                 <span>{item.label}</span>
               </button>
@@ -477,7 +611,7 @@ const AdminDashboard = () => {
 
       {/* MAIN CONTENT WORKSPACE */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-        
+
         {/* TOP NAVBAR / HEADER */}
         <header className="bg-white border-b border-gray-100 px-8 py-5 flex items-center justify-between shadow-sm sticky top-0 z-30">
           <div>
@@ -490,15 +624,8 @@ const AdminDashboard = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-56 pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:border-[#ff7300] focus:ring-1 focus:ring-[#ff7300] transition bg-white"
-              />
-            </div>
+
+
 
             {activeTab === 'Manage Inventory' && (
               <button
@@ -512,20 +639,13 @@ const AdminDashboard = () => {
               </button>
             )}
 
-            {activeTab === 'Manage Users' && (
-              <button
-                onClick={() => setShowAddUserModal(true)}
-                className="bg-[#ff7300] hover:bg-[#e56700] text-white text-xs font-bold py-2.5 px-4 rounded-lg flex items-center gap-1.5 shadow-sm transition"
-              >
-                <FiUserPlus className="text-sm stroke-[2.5]" /> Add User
-              </button>
-            )}
+
           </div>
         </header>
 
         {/* MAIN BODY CONTENT */}
         <main className="p-8 space-y-8 flex-1 overflow-y-auto max-w-7xl">
-          
+
           {/* VIEW 1: DASHBOARD VIEW */}
           {activeTab === 'Dashboard' && (
             <>
@@ -589,11 +709,10 @@ const AdminDashboard = () => {
                               <td className="py-3.5 px-6 text-xs text-gray-800 font-medium">{o.customer || 'Customer'}</td>
                               <td className="py-3.5 px-6 text-xs text-[#ff7300] font-bold">{o.total}</td>
                               <td className="py-3.5 px-6 text-xs">
-                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                  o.status === 'Completed' ? 'bg-emerald-100 text-emerald-600' :
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${o.status === 'Completed' ? 'bg-emerald-100 text-emerald-600' :
                                   o.status === 'Cancelled' ? 'bg-rose-100 text-rose-500' :
-                                  'bg-amber-100 text-amber-600'
-                                }`}>
+                                    'bg-amber-100 text-amber-600'
+                                  }`}>
                                   {o.status || 'Pending'}
                                 </span>
                               </td>
@@ -620,7 +739,7 @@ const AdminDashboard = () => {
                     <h2 className="text-base font-bold text-gray-900 mb-3">Quick Actions</h2>
                     <div className="space-y-2.5">
                       <button onClick={() => setActiveTab('Manage Inventory')} className="w-full bg-[#ff7300] hover:bg-[#e56700] text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-sm text-center">Add Item</button>
-            
+
                     </div>
                   </div>
                 </div>
@@ -652,24 +771,22 @@ const AdminDashboard = () => {
                           <td className="py-4 px-6 text-sm text-gray-600">{u.email}</td>
                           <td className="py-4 px-6 text-sm text-gray-600">{u.phone}</td>
                           <td className="py-4 px-6 text-sm">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              u.status === 'Active' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
-                            }`}>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${u.status === 'Active' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
+                              }`}>
                               {u.status}
                             </span>
                           </td>
                           <td className="py-4 px-6 text-sm">
                             <div className="flex items-center gap-2">
-                              <button 
+                              <button
                                 onClick={() => handleToggleUserStatus(u)}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-lg text-white transition ${
-                                  u.status === 'Active' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'
-                                }`}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg text-white transition ${u.status === 'Active' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'
+                                  }`}
                                 title={u.status === 'Active' ? 'Block User' : 'Activate User'}
                               >
                                 {u.status === 'Active' ? 'Block' : 'Activate'}
                               </button>
-                              <button 
+                              <button
                                 onClick={() => handleDeleteUser(u)}
                                 className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition"
                                 title="Delete User"
@@ -690,6 +807,61 @@ const AdminDashboard = () => {
           {/* VIEW 3: MANAGE INVENTORY (Matching Image 1) */}
           {activeTab === 'Manage Inventory' && (
             <div className="space-y-8">
+              {/* Global Delivery Fee Settings Card (Common for All Items) */}
+              <div className="bg-white rounded-2xl p-6 md:p-7 border border-orange-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+
+                    <div>
+                      <h2 className="text-base md:text-lg font-bold text-gray-900">
+                        Delivery Fee
+                      </h2>
+                      <p className="text-xs text-gray-500">
+                        This delivery fee applies equally to every store item and order.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveGlobalDeliveryFee} className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 bg-[#fff9f5] border border-orange-200/70 rounded-xl px-3.5 py-2">
+                    <span className="text-xs font-semibold text-gray-500">Current:</span>
+                    <span className="text-sm font-extrabold text-[#ff7300]">
+                      {globalDeliveryFee > 0 ? `Rs. ${globalDeliveryFee.toLocaleString()}` : 'Free'}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
+                      Rs.
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="350"
+                      value={deliveryFeeInput}
+                      onKeyDown={(e) => {
+                        if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || Number(val) >= 0) {
+                          setDeliveryFeeInput(val);
+                        }
+                      }}
+                      className="w-36 pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-800 focus:outline-none focus:border-[#ff7300]"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={savingDeliveryFee}
+                    className="bg-[#ff7300] hover:bg-[#e66700] disabled:opacity-60 text-white font-bold py-2.5 px-5 rounded-xl text-xs md:text-sm transition shadow-sm"
+                  >
+                    {savingDeliveryFee ? 'Updating...' : 'Update Delivery Fee'}
+                  </button>
+                </form>
+              </div>
+
               {/* Inventory Table */}
               <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
                 <div className="overflow-x-auto rounded-xl border border-gray-100">
@@ -701,6 +873,7 @@ const AdminDashboard = () => {
                         <th className="py-4 px-6 font-bold text-gray-900 text-xs uppercase tracking-wider">Item Name</th>
                         <th className="py-4 px-6 font-bold text-gray-900 text-xs uppercase tracking-wider">Category</th>
                         <th className="py-4 px-6 font-bold text-gray-900 text-xs uppercase tracking-wider">Price</th>
+                        <th className="py-4 px-6 font-bold text-gray-900 text-xs uppercase tracking-wider">Delivery Fee</th>
                         <th className="py-4 px-6 font-bold text-gray-900 text-xs uppercase tracking-wider">Stock</th>
                         <th className="py-4 px-6 font-bold text-gray-900 text-xs uppercase tracking-wider">Status</th>
                         <th className="py-4 px-6 font-bold text-gray-900 text-xs uppercase tracking-wider">Actions</th>
@@ -721,20 +894,32 @@ const AdminDashboard = () => {
                           <td className="py-4 px-6 text-sm font-bold text-[#ff7300]">{item.itemId || `ITM_${String(index).padStart(3, '0')}`}</td>
                           <td className="py-4 px-6 text-sm font-medium text-gray-900">{item.name}</td>
                           <td className="py-4 px-6 text-sm text-gray-600">{item.category}</td>
-                          <td className="py-4 px-6 text-sm font-semibold text-gray-900">{item.price}</td>
+                          <td className="py-4 px-6 text-sm font-semibold text-gray-900">
+                            {item.price ? (item.price.toString().startsWith('Rs') ? item.price : `Rs. ${item.price}`) : 'Rs. 0'}
+                          </td>
+                          <td className="py-4 px-6 text-sm font-medium text-gray-700">
+                            {Number(globalDeliveryFee) > 0 ? `Rs. ${Number(globalDeliveryFee).toLocaleString()}` : <span className="text-emerald-600 font-semibold">Free</span>}
+                          </td>
                           <td className="py-4 px-6 text-sm text-gray-700">{item.stock}</td>
                           <td className="py-4 px-6 text-sm">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              item.status === 'Available' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
-                            }`}>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${item.status === 'Available' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
+                              }`}>
                               {item.status}
                             </span>
                           </td>
                           <td className="py-4 px-6 text-sm">
                             <div className="flex items-center gap-2">
-                              <button 
+                              <button
                                 onClick={() => {
-                                  setItemForm({ name: item.name, category: item.category, price: item.price.toString().replace('$',''), stock: item.stock.toString(), description: item.description || '' });
+                                  setItemForm({
+                                    _id: item._id || item.id,
+                                    itemCode: item.itemId || '',
+                                    name: item.name,
+                                    category: item.category,
+                                    price: item.price.toString().replace(/[^0-9.]/g, ''),
+                                    stock: item.stock.toString(),
+                                    description: item.description || ''
+                                  });
                                   const formEl = document.getElementById('inventory-form');
                                   if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
                                 }}
@@ -743,11 +928,8 @@ const AdminDashboard = () => {
                               >
                                 <FiEdit className="text-sm" />
                               </button>
-                              <button 
-                                onClick={() => {
-                                  setInventory(inventory.filter(x => (x._id || x.id) !== (item._id || item.id)));
-                                  triggerToast(`Item ${item.name} deleted.`);
-                                }}
+                              <button
+                                onClick={() => handleDeleteItem(item)}
                                 className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition"
                                 title="Delete Item"
                               >
@@ -765,7 +947,7 @@ const AdminDashboard = () => {
               {/* Add / Update Pet Item Form (Card matching Image 1 bottom) */}
               <div id="inventory-form" className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm space-y-6">
                 <h2 className="text-lg font-bold text-gray-900">Add / Update Pet Item</h2>
-                
+
                 <form onSubmit={handleSaveInventoryItem} className="space-y-4">
                   {/* Row 1 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -776,33 +958,45 @@ const AdminDashboard = () => {
                       onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#ff7300]"
                     />
-                    <select
-                      value={itemForm.category}
-                      onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 bg-gray-100/70 focus:outline-none focus:border-[#ff7300]"
-                    >
-                      <option value="">Category</option>
-                      <option value="Skin Care">Skin Care</option>
-                      <option value="Medicine">Medicine</option>
-                      <option value="Supplements">Supplements</option>
-                      <option value="Grooming">Grooming</option>
-                    </select>
+
                   </div>
 
                   {/* Row 2 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <input
-                      type="text"
-                      placeholder="Price"
+                      type="number"
+                      min="1"
+                      step="any"
+                      placeholder="Price (Rs.)"
                       value={itemForm.price}
-                      onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || Number(val) >= 0) {
+                          setItemForm({ ...itemForm, price: val });
+                        }
+                      }}
+                      required
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#ff7300]"
                     />
                     <input
                       type="number"
+                      min="0"
+                      step="1"
                       placeholder="Stock Quantity"
                       value={itemForm.stock}
-                      onChange={(e) => setItemForm({ ...itemForm, stock: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault();
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || Number(val) >= 0) {
+                          setItemForm({ ...itemForm, stock: val });
+                        }
+                      }}
+                      required
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#ff7300]"
                     />
                   </div>
@@ -818,34 +1012,34 @@ const AdminDashboard = () => {
                     ></textarea>
                   </div>
 
-                   {/* Row 4: File Inputs */}
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     <div className="flex flex-col">
-                       <label className="text-xs text-gray-500 mb-1 font-semibold">Main Item Image</label>
-                       <div className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-500 bg-white flex items-center">
-                         <input 
-                           id="item-image-upload"
-                           type="file" 
-                           accept="image/*"
-                           onChange={(e) => setImageFile(e.target.files[0])}
-                           className="text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer w-full" 
-                         />
-                       </div>
-                     </div>
-                     <div className="flex flex-col">
-                       <label className="text-xs text-gray-500 mb-1 font-semibold">Additional Images (Up to 5)</label>
-                       <div className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-500 bg-white flex items-center">
-                         <input 
-                           id="item-additional-upload"
-                           type="file" 
-                           multiple
-                           accept="image/*"
-                           onChange={(e) => setAdditionalFiles(Array.from(e.target.files))}
-                           className="text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer w-full" 
-                         />
-                       </div>
-                     </div>
-                   </div>
+                  {/* Row 4: File Inputs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <label className="text-xs text-gray-500 mb-1 font-semibold">Main Item Image</label>
+                      <div className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-500 bg-white flex items-center">
+                        <input
+                          id="item-image-upload"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setImageFile(e.target.files[0])}
+                          className="text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-xs text-gray-500 mb-1 font-semibold">Additional Images (Up to 5)</label>
+                      <div className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-500 bg-white flex items-center">
+                        <input
+                          id="item-additional-upload"
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={(e) => setAdditionalFiles(Array.from(e.target.files))}
+                          className="text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Buttons */}
                   <div className="flex items-center gap-3 pt-2">
@@ -853,11 +1047,15 @@ const AdminDashboard = () => {
                       type="submit"
                       className="bg-[#ff7300] hover:bg-[#e66700] text-white font-bold py-2.5 px-6 rounded-xl text-sm transition shadow-sm"
                     >
-                      Save Item
+                      {itemForm._id ? 'Update Item' : 'Save Item'}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setItemForm({ name: '', category: '', price: '', stock: '', description: '' })}
+                      onClick={() => {
+                        setItemForm({ _id: '', itemCode: '', name: '', category: '', price: '', stock: '', description: '' });
+                        setImageFile(null);
+                        setAdditionalFiles([]);
+                      }}
                       className="bg-[#6b7280] hover:bg-[#4b5563] text-white font-bold py-2.5 px-6 rounded-xl text-sm transition shadow-sm"
                     >
                       Clear
@@ -897,117 +1095,30 @@ const AdminDashboard = () => {
                           <td className="py-4 px-5 text-sm font-semibold text-gray-900">{o.total}</td>
                           <td className="py-4 px-5 text-sm text-gray-600">{o.payment}</td>
                           <td className="py-4 px-5 text-sm">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              o.status === 'Pending' ? 'bg-amber-100 text-amber-600' :
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${o.status === 'Pending' ? 'bg-amber-100 text-amber-600' :
                               o.status === 'Processing' ? 'bg-sky-100 text-sky-600' :
-                              o.status === 'Delivered' ? 'bg-emerald-100 text-emerald-600' :
-                              'bg-rose-100 text-rose-600'
-                            }`}>
+                                o.status === 'Shipped' ? 'bg-indigo-100 text-indigo-600' :
+                                  o.status === 'Delivered' ? 'bg-emerald-100 text-emerald-600' :
+                                    'bg-rose-100 text-rose-600'
+                              }`}>
                               {o.status}
                             </span>
                           </td>
                           <td className="py-4 px-5 text-sm">
-                            <div className="flex items-center gap-2">
-                              <button 
-                                onClick={() => setViewingOrderDetails(o)}
-                                className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition"
-                                title="View Order Details"
-                              >
-                                <FiEye className="text-sm" />
-                              </button>
-                              <button 
-                                onClick={() => {
-                                  setOrderForm({ orderId: o.id, customerName: o.customer, status: o.status, notes: '' });
-                                  const formEl = document.getElementById('order-form');
-                                  if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                                className="bg-amber-400 hover:bg-amber-500 text-white p-2 rounded-lg transition"
-                                title="Edit Status"
-                              >
-                                <FiEdit className="text-sm" />
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => handleOpenOrderDetails(o)}
+                              className="bg-blue-500 hover:bg-blue-600 text-white px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+                              title="View Order Details & Manage Status"
+                            >
+                              <FiEye className="text-sm" />
+                              <span>View</span>
+                            </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
-
-              {/* Update Order Status Form (Card matching Image 2 bottom) */}
-              <div id="order-form" className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm space-y-6">
-                <h2 className="text-lg font-bold text-gray-900">Update Order Status</h2>
-                
-                <form onSubmit={handleUpdateOrderStatus} className="space-y-4">
-                  {/* Row 1 */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input
-                      type="text"
-                      placeholder="Order ID"
-                      value={orderForm.orderId}
-                      onChange={(e) => setOrderForm({ ...orderForm, orderId: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#ff7300]"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Customer Name"
-                      value={orderForm.customerName}
-                      onChange={(e) => setOrderForm({ ...orderForm, customerName: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#ff7300]"
-                    />
-                  </div>
-
-                  {/* Row 2 */}
-                  <div>
-                    <select
-                      value={orderForm.status}
-                      onChange={(e) => setOrderForm({ ...orderForm, status: e.target.value })}
-                      className="w-full md:w-1/2 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 bg-gray-100/70 focus:outline-none focus:border-[#ff7300]"
-                    >
-                      <option value="">Select Status</option>
-                      <option value="Pending">Pending</option>
-                      <option value="Processing">Processing</option>
-                      <option value="Delivered">Delivered</option>
-                      <option value="Cancelled">Cancelled</option>
-                    </select>
-                  </div>
-
-                  {/* Row 3 */}
-                  <div>
-                    <textarea
-                      rows="4"
-                      placeholder="Order Notes"
-                      value={orderForm.notes}
-                      onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#ff7300] resize-none"
-                    ></textarea>
-                  </div>
-
-                  {/* Row 4: File Input */}
-                  <div className="w-full max-w-sm">
-                    <div className="border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-500 bg-white flex items-center">
-                      <input type="file" className="text-xs file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer" />
-                    </div>
-                  </div>
-
-                  {/* Buttons */}
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="submit"
-                      className="bg-[#ff7300] hover:bg-[#e66700] text-white font-bold py-2.5 px-6 rounded-xl text-sm transition shadow-sm"
-                    >
-                      Update Status
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOrderForm({ orderId: '', customerName: '', status: '', notes: '' })}
-                      className="bg-[#6b7280] hover:bg-[#4b5563] text-white font-bold py-2.5 px-6 rounded-xl text-sm transition shadow-sm"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </form>
               </div>
             </div>
           )}
@@ -1037,7 +1148,7 @@ const AdminDashboard = () => {
                 <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
                   <div className="text-[#ff7300] text-3xl mb-1"><FiSmile /></div>
                   <p className="text-2xl font-extrabold text-gray-900">{feedback.filter(f => f.rating >= 4).length}</p>
-                  <p className="text-xs text-gray-500 font-medium">Positive Reviews</p>
+                  <p className="text-xs text-gray-500 font-medium"> Reviews</p>
                 </div>
               </div>
 
@@ -1069,7 +1180,7 @@ const AdminDashboard = () => {
                           <td className="py-4 px-5 text-xs text-gray-500 font-medium">{f.date}</td>
                           <td className="py-4 px-5 text-sm">
                             <div className="flex items-center gap-2">
-                              <button 
+                              <button
                                 onClick={() => {
                                   setFeedbackForm({ customerName: f.customer, productName: f.product, rating: `${f.rating} Stars`, comment: f.comment });
                                   const formEl = document.getElementById('feedback-form');
@@ -1080,7 +1191,7 @@ const AdminDashboard = () => {
                               >
                                 <FiEye className="text-sm" />
                               </button>
-                              <button 
+                              <button
                                 onClick={async () => {
                                   if (f._id) {
                                     try {
@@ -1137,9 +1248,8 @@ const AdminDashboard = () => {
                         <div
                           key={c._id}
                           onClick={() => setSelectedChatEmail(c._id)}
-                          className={`p-4 cursor-pointer transition flex items-start gap-3 ${
-                            isSelected ? 'bg-orange-50/80 border-l-4 border-[#ff7300]' : 'hover:bg-gray-100/60 bg-white'
-                          }`}
+                          className={`p-4 cursor-pointer transition flex items-start gap-3 ${isSelected ? 'bg-orange-50/80 border-l-4 border-[#ff7300]' : 'hover:bg-gray-100/60 bg-white'
+                            }`}
                         >
                           <div className="w-10 h-10 rounded-full bg-[#ff7300]/10 text-[#ff7300] font-bold flex items-center justify-center shrink-0 text-sm">
                             {c.userName ? c.userName.charAt(0).toUpperCase() : 'U'}
@@ -1211,11 +1321,10 @@ const AdminDashboard = () => {
                                 {isAdmin ? 'You (Admin)' : m.userName || 'Customer'} • {msgTime}
                               </span>
                               <div
-                                className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-xs shadow-sm font-medium leading-relaxed ${
-                                  isAdmin
-                                    ? 'bg-[#ff7300] text-white rounded-br-none'
-                                    : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none'
-                                }`}
+                                className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-xs shadow-sm font-medium leading-relaxed ${isAdmin
+                                  ? 'bg-[#ff7300] text-white rounded-br-none'
+                                  : 'bg-white border border-gray-200 text-gray-800 rounded-bl-none'
+                                  }`}
                               >
                                 {m.message}
                               </div>
@@ -1263,14 +1372,14 @@ const AdminDashboard = () => {
       {showLogoutModal && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl relative animate-in fade-in zoom-in duration-200">
-            
+
             {/* Orange Circle Icon */}
             <div className="w-16 h-16 rounded-full bg-orange-100 text-[#ff7300] flex items-center justify-center mx-auto mb-4">
               <FiLogOut className="text-2xl stroke-[2.5]" />
             </div>
 
             <h3 className="text-xl font-bold text-[#ff7300] mb-2">Logout</h3>
-            
+
             <p className="text-xs text-gray-500 mb-6 font-medium leading-relaxed px-2">
               Are you sure you want to logout from the DoggoCare Admin Panel?
             </p>
@@ -1304,9 +1413,9 @@ const AdminDashboard = () => {
             >
               <FiX className="text-xl" />
             </button>
-            
+
             <h3 className="text-xl font-bold text-gray-900 mb-4">Add New User</h3>
-            
+
             <form onSubmit={handleAddUserSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label>
@@ -1404,18 +1513,50 @@ const AdminDashboard = () => {
             {/* Status & Payment Badges */}
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs font-semibold text-gray-500">Status:</span>
-              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                viewingOrderDetails.status === 'Pending' ? 'bg-amber-100 text-amber-600' :
+              <span className={`px-3 py-1 rounded-full text-xs font-bold ${viewingOrderDetails.status === 'Pending' ? 'bg-amber-100 text-amber-600' :
                 viewingOrderDetails.status === 'Processing' ? 'bg-sky-100 text-sky-600' :
-                viewingOrderDetails.status === 'Delivered' ? 'bg-emerald-100 text-emerald-600' :
-                'bg-rose-100 text-rose-600'
-              }`}>
+                  viewingOrderDetails.status === 'Shipped' ? 'bg-indigo-100 text-indigo-600' :
+                    viewingOrderDetails.status === 'Delivered' ? 'bg-emerald-100 text-emerald-600' :
+                      'bg-rose-100 text-rose-600'
+                }`}>
                 {viewingOrderDetails.status}
               </span>
               <span className="text-xs font-semibold text-gray-500 ml-4">Payment Method:</span>
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 uppercase">
                 {viewingOrderDetails.payment}
               </span>
+            </div>
+
+            {/* Update Order Status Section (Locked once Delivered) */}
+            <div className="bg-[#fff9f5] rounded-2xl p-4 border border-orange-100">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-[#ff7300] mb-3">
+                Order Status Management
+              </h3>
+              {viewingOrderDetails.status === 'Delivered' ? (
+                <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-xs font-semibold">
+                  <span>✅</span>
+                  <span>This order has been marked as <strong>Delivered</strong>. Its status is now locked and cannot be changed.</span>
+                </div>
+              ) : (
+                <form onSubmit={handleUpdateOrderStatus} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <select
+                    value={modalOrderStatus}
+                    onChange={(e) => setModalOrderStatus(e.target.value)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-xs sm:text-sm font-semibold text-gray-700 bg-white focus:outline-none focus:border-[#ff7300]"
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={updatingOrderStatus || modalOrderStatus === viewingOrderDetails.status}
+                    className="bg-[#ff7300] hover:bg-[#e66700] disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm transition shadow-sm whitespace-nowrap"
+                  >
+                    {updatingOrderStatus ? 'Updating...' : 'Update Status'}
+                  </button>
+                </form>
+              )}
             </div>
 
             {/* Customer Info Card */}

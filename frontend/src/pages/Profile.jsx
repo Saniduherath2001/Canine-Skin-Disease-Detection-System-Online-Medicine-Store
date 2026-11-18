@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   FiUser, 
   FiMail, 
@@ -21,8 +21,10 @@ import {
   FiLoader
 } from 'react-icons/fi';
 
-const Profile = () => {
+const Profile = ({ defaultTab }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const fileInputRef = useRef(null);
 
   // User Auth State
@@ -34,7 +36,16 @@ const Profile = () => {
     }
   });
 
-  const [activeTab, setActiveTab] = useState('details'); // 'details' | 'orders'
+  const initialTab = searchParams.get('tab') || location.state?.tab || defaultTab || 'details';
+  const [activeTab, setActiveTab] = useState(initialTab); // 'details' | 'orders'
+
+  // Sync tab if URL search params or location state changes
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') || location.state?.tab || defaultTab;
+    if (tabParam === 'orders' || tabParam === 'details') {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams, location.state, defaultTab]);
   const [toastMessage, setToastMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,15 +64,80 @@ const Profile = () => {
   const [postalCode, setPostalCode] = useState(user?.address?.postalCode || '');
   const [province, setProvince] = useState(user?.address?.province || '');
 
-  // Form State - Bank Details
-  const [accountHolderName, setAccountHolderName] = useState(user?.bankDetails?.accountHolderName || '');
-  const [bankName, setBankName] = useState(user?.bankDetails?.bankName || '');
-  const [branchName, setBranchName] = useState(user?.bankDetails?.branchName || '');
-  const [accountNumber, setAccountNumber] = useState(user?.bankDetails?.accountNumber || '');
+  // Form State - Card Details
+  const [cardHolderName, setCardHolderName] = useState(user?.cardDetails?.cardHolderName || '');
+  const [cardNumber, setCardNumber] = useState(user?.cardDetails?.cardNumber || '');
+  const [expiryDate, setExpiryDate] = useState(user?.cardDetails?.expiryDate || '');
+  const [cardType, setCardType] = useState(user?.cardDetails?.cardType || '');
 
   // Orders State
   const [userOrders, setUserOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+
+  // Refresh live 2-hour cancellation countdown every 30 seconds
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Card formatting & validation helpers
+  const detectCardTypeFromDigits = (digits) => {
+    if (/^4/.test(digits)) return 'Visa';
+    if (/^(5[1-5]|222[1-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)/.test(digits)) return 'Mastercard';
+    if (/^3[47]/.test(digits)) return 'American Express';
+    if (/^(6011|65|64[4-9])/.test(digits)) return 'Discover';
+    return '';
+  };
+
+  const isValidLuhn = (digits) => {
+    if (!/^\d+$/.test(digits) || /^(\d)\1+$/.test(digits)) return false;
+    let sum = 0;
+    let shouldDouble = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let d = parseInt(digits[i], 10);
+      if (shouldDouble) {
+        d *= 2;
+        if (d > 9) d -= 9;
+      }
+      sum += d;
+      shouldDouble = !shouldDouble;
+    }
+    return sum % 10 === 0;
+  };
+
+  const handleCardNumberChange = (e) => {
+    const rawDigits = e.target.value.replace(/\D/g, '');
+    const isAmex = /^3[47]/.test(rawDigits);
+    const raw = rawDigits.substring(0, isAmex ? 15 : 16);
+    let formatted = raw;
+    if (isAmex) {
+      if (raw.length > 10) formatted = `${raw.substring(0, 4)} ${raw.substring(4, 10)} ${raw.substring(10)}`;
+      else if (raw.length > 4) formatted = `${raw.substring(0, 4)} ${raw.substring(4)}`;
+    } else {
+      formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
+    }
+    setCardNumber(formatted);
+    const detected = detectCardTypeFromDigits(raw);
+    if (detected) setCardType(detected);
+  };
+
+  const handleExpiryDateChange = (e) => {
+    let raw = e.target.value.replace(/\D/g, '').substring(0, 4);
+    if (raw.length > 2) {
+      raw = `${raw.substring(0, 2)}/${raw.substring(2)}`;
+    }
+    setExpiryDate(raw);
+  };
+
+  const getMaskedCardNumber = (num) => {
+    const digits = (num || '').replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.length <= 4) return digits;
+    const last4 = digits.slice(-4);
+    return `•••• •••• •••• ${last4}`;
+  };
 
   // Redirect to login if user is not signed in
   useEffect(() => {
@@ -110,11 +186,11 @@ const Profile = () => {
               setPostalCode(u.address.postalCode || '');
               setProvince(formatProvince(u.address.province));
             }
-            if (u.bankDetails) {
-              setAccountHolderName(u.bankDetails.accountHolderName || '');
-              setBankName(u.bankDetails.bankName || '');
-              setBranchName(u.bankDetails.branchName || '');
-              setAccountNumber(u.bankDetails.accountNumber || '');
+            if (u.cardDetails) {
+              setCardHolderName(u.cardDetails.cardHolderName || '');
+              setCardNumber(u.cardDetails.cardNumber || '');
+              setExpiryDate(u.cardDetails.expiryDate || '');
+              setCardType(u.cardDetails.cardType || '');
             }
           }
         }
@@ -141,11 +217,11 @@ const Profile = () => {
         setPostalCode(user.address.postalCode || '');
         setProvince(formatProvince(user.address.province));
       }
-      if (user.bankDetails) {
-        setAccountHolderName(user.bankDetails.accountHolderName || '');
-        setBankName(user.bankDetails.bankName || '');
-        setBranchName(user.bankDetails.branchName || '');
-        setAccountNumber(user.bankDetails.accountNumber || '');
+      if (user.cardDetails) {
+        setCardHolderName(user.cardDetails.cardHolderName || '');
+        setCardNumber(user.cardDetails.cardNumber || '');
+        setExpiryDate(user.cardDetails.expiryDate || '');
+        setCardType(user.cardDetails.cardType || '');
       }
     }
   }, [user]);
@@ -181,6 +257,48 @@ const Profile = () => {
   const triggerToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3500);
+  };
+
+  const formatRemainingCancelTime = (remainingMs) => {
+    const totalMinutes = Math.ceil(remainingMs / (60 * 1000));
+    if (totalMinutes <= 1) return '< 1m left to cancel';
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hours > 0) {
+      return mins > 0 ? `${hours}h ${mins}m left to cancel` : `${hours}h left to cancel`;
+    }
+    return `${mins}m left to cancel`;
+  };
+
+  const handleCancelOrder = async (order) => {
+    if (!order?._id) return;
+    if (!window.confirm(`Are you sure you want to cancel Order #${order.orderId || order.orderCode || ''}?`)) {
+      return;
+    }
+
+    setCancellingOrderId(order._id);
+    try {
+      const res = await fetch(`http://localhost:5001/api/orders/${order._id}/cancel`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user?.email || email }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setUserOrders((prev) =>
+          prev.map((o) => (o._id === order._id ? { ...o, status: 'Cancelled' } : o))
+        );
+        triggerToast('Order cancelled successfully!');
+      } else {
+        triggerToast(data.message || 'Unable to cancel this order.');
+      }
+    } catch (err) {
+      console.error('Failed to cancel order:', err);
+      triggerToast('Server error while cancelling order.');
+    } finally {
+      setCancellingOrderId(null);
+    }
   };
 
   // Upload Profile Picture handler
@@ -284,6 +402,40 @@ const Profile = () => {
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+
+    // Validate 5-digit Postal Code
+    const trimmedPostal = postalCode.trim();
+    if (trimmedPostal && !/^[0-9]{5}$/.test(trimmedPostal)) {
+      triggerToast('Postal code must be exactly 5 digits (e.g. 10100).');
+      return;
+    }
+
+    // Validate Card Details if provided
+    const cleanCardDigits = cardNumber.replace(/\D/g, '');
+    if (cleanCardDigits) {
+      const detectedType = detectCardTypeFromDigits(cleanCardDigits);
+      const expectedLen = detectedType === 'American Express' ? 15 : 16;
+      if (!detectedType || cleanCardDigits.length !== expectedLen || !isValidLuhn(cleanCardDigits)) {
+        triggerToast('Please enter a valid Visa, Mastercard, Amex, Discover, or Stripe test card number.');
+        return;
+      }
+    }
+
+    if (expiryDate.trim()) {
+      const expMatch = expiryDate.trim().match(/^(0[1-9]|1[0-2])\/(\d{2})$/);
+      if (!expMatch) {
+        triggerToast('Expiry date must be in MM/YY format (e.g. 12/28).');
+        return;
+      }
+      const expMonth = parseInt(expMatch[1], 10);
+      const expYear = 2000 + parseInt(expMatch[2], 10);
+      const now = new Date();
+      if (expYear < now.getFullYear() || (expYear === now.getFullYear() && expMonth < now.getMonth() + 1)) {
+        triggerToast('Card expiry date cannot be in the past.');
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
@@ -299,14 +451,14 @@ const Profile = () => {
         address: {
           street,
           city,
-          postalCode,
+          postalCode: trimmedPostal,
           province,
         },
-        bankDetails: {
-          accountHolderName,
-          bankName,
-          branchName,
-          accountNumber,
+        cardDetails: {
+          cardHolderName: cardHolderName.trim(),
+          cardNumber: cardNumber.trim(),
+          expiryDate: expiryDate.trim(),
+          cardType: cardType || detectCardTypeFromDigits(cleanCardDigits) || '',
         }
       };
 
@@ -325,13 +477,13 @@ const Profile = () => {
           fullName,
           phone,
           profilePic,
-          address: { street, city, postalCode, province },
-          bankDetails: { accountHolderName, bankName, branchName, accountNumber }
+          address: { street, city, postalCode: trimmedPostal, province },
+          cardDetails: payload.cardDetails
         };
         localStorage.setItem('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
         window.dispatchEvent(new Event('authChange'));
-        triggerToast('Profile, Address & Bank details updated successfully!');
+        triggerToast('Profile, Address & Card details updated successfully!');
         setIsEditing(false);
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -514,7 +666,7 @@ const Profile = () => {
                 <div className="flex items-center justify-between border-b border-gray-100 pb-5 mb-6">
                   <div>
                     <h2 className="text-xl font-extrabold text-gray-900">Account & Payment Profile</h2>
-                    <p className="text-xs text-gray-400 font-medium mt-0.5">Manage your personal info, delivery address, and bank refund details</p>
+                    <p className="text-xs text-gray-400 font-medium mt-0.5">Manage your personal info, delivery address, and saved card details</p>
                   </div>
                   {!isEditing ? (
                     <button
@@ -636,12 +788,15 @@ const Profile = () => {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Postal Code</label>
+                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Postal Code (5 digits)</label>
                         <input
                           type="text"
+                          inputMode="numeric"
+                          maxLength={5}
+                          pattern="[0-9]{5}"
                           disabled={!isEditing}
                           value={postalCode}
-                          onChange={(e) => setPostalCode(e.target.value)}
+                          onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
                           placeholder="e.g. 00300"
                           className={`w-full px-4 py-3 rounded-xl border text-xs text-gray-800 transition ${
                             isEditing
@@ -649,6 +804,11 @@ const Profile = () => {
                               : 'border-gray-100 bg-gray-50/70 cursor-not-allowed'
                           }`}
                         />
+                        {isEditing && postalCode.length > 0 && postalCode.length < 5 && (
+                          <p className="text-[10px] text-rose-500 font-medium mt-1">
+                            Postal code must be exactly 5 digits ({postalCode.length}/5).
+                          </p>
+                        )}
                       </div>
 
                       <div className="md:col-span-2">
@@ -678,14 +838,14 @@ const Profile = () => {
                     </div>
                   </div>
 
-                  {/* Section 3: Bank & Refund Details */}
+                  {/* Section 3: Saved Card Details */}
                   <div className="pt-2 border-t border-gray-100">
                     <div className="flex items-center justify-between mb-4 mt-6">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg bg-orange-100 text-[#FA9132] flex items-center justify-center text-sm font-bold">
                           <FiCreditCard />
                         </div>
-                        <h3 className="text-sm font-extrabold text-gray-800">3. Bank & Refund Details</h3>
+                        <h3 className="text-sm font-extrabold text-gray-800">3. Card Details</h3>
                       </div>
                       <span className="flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full font-semibold border border-emerald-100">
                         <FiShield className="text-xs" /> Secure Encrypted
@@ -693,18 +853,18 @@ const Profile = () => {
                     </div>
 
                     <p className="text-[11px] text-gray-400 mb-4 font-normal">
-                      Provide your bank account details for fast automated refunds and payout processing.
+                      Save your Visa, Mastercard, Amex, or Discover card details for faster checkout.
                     </p>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Account Holder Name</label>
+                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Cardholder Name</label>
                         <input
                           type="text"
                           disabled={!isEditing}
-                          value={accountHolderName}
-                          onChange={(e) => setAccountHolderName(e.target.value)}
-                          placeholder="Name as per Bank Account"
+                          value={cardHolderName}
+                          onChange={(e) => setCardHolderName(e.target.value)}
+                          placeholder="Name as shown on Card"
                           className={`w-full px-4 py-3 rounded-xl border text-xs text-gray-800 transition ${
                             isEditing
                               ? 'border-gray-300 bg-white focus:outline-none focus:border-[#FA9132] focus:ring-1 focus:ring-[#FA9132]'
@@ -714,14 +874,35 @@ const Profile = () => {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Bank Name</label>
+                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Card Type</label>
+                        <select
+                          disabled={!isEditing}
+                          value={cardType}
+                          onChange={(e) => setCardType(e.target.value)}
+                          className={`w-full px-4 py-3 rounded-xl border text-xs text-gray-800 transition ${
+                            isEditing
+                              ? 'border-gray-300 bg-white focus:outline-none focus:border-[#FA9132] focus:ring-1 focus:ring-[#FA9132]'
+                              : 'border-gray-100 bg-gray-50/70 cursor-not-allowed text-gray-700'
+                          }`}
+                        >
+                          <option value="">Select Card Type</option>
+                          <option value="Visa">Visa</option>
+                          <option value="Mastercard">Mastercard</option>
+                          <option value="American Express">American Express</option>
+                          <option value="Discover">Discover</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Card Number</label>
                         <input
                           type="text"
+                          inputMode="numeric"
                           disabled={!isEditing}
-                          value={bankName}
-                          onChange={(e) => setBankName(e.target.value)}
-                          placeholder="e.g. Commercial Bank, BOC, Sampath Bank"
-                          className={`w-full px-4 py-3 rounded-xl border text-xs text-gray-800 transition ${
+                          value={isEditing ? cardNumber : getMaskedCardNumber(cardNumber)}
+                          onChange={handleCardNumberChange}
+                          placeholder="4242 4242 4242 4242"
+                          className={`w-full px-4 py-3 rounded-xl border text-xs font-mono text-gray-800 transition ${
                             isEditing
                               ? 'border-gray-300 bg-white focus:outline-none focus:border-[#FA9132] focus:ring-1 focus:ring-[#FA9132]'
                               : 'border-gray-100 bg-gray-50/70 cursor-not-allowed'
@@ -730,30 +911,16 @@ const Profile = () => {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Branch Name</label>
+                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Expiry Date (MM/YY)</label>
                         <input
                           type="text"
+                          inputMode="numeric"
+                          maxLength={5}
                           disabled={!isEditing}
-                          value={branchName}
-                          onChange={(e) => setBranchName(e.target.value)}
-                          placeholder="e.g. Kollupitiya, Kandy Main"
-                          className={`w-full px-4 py-3 rounded-xl border text-xs text-gray-800 transition ${
-                            isEditing
-                              ? 'border-gray-300 bg-white focus:outline-none focus:border-[#FA9132] focus:ring-1 focus:ring-[#FA9132]'
-                              : 'border-gray-100 bg-gray-50/70 cursor-not-allowed'
-                          }`}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Account Number</label>
-                        <input
-                          type="text"
-                          disabled={!isEditing}
-                          value={accountNumber}
-                          onChange={(e) => setAccountNumber(e.target.value)}
-                          placeholder="e.g. 100012345678"
-                          className={`w-full px-4 py-3 rounded-xl border text-xs text-gray-800 transition ${
+                          value={expiryDate}
+                          onChange={handleExpiryDateChange}
+                          placeholder="MM/YY (e.g. 12/28)"
+                          className={`w-full px-4 py-3 rounded-xl border text-xs font-mono text-gray-800 transition ${
                             isEditing
                               ? 'border-gray-300 bg-white focus:outline-none focus:border-[#FA9132] focus:ring-1 focus:ring-[#FA9132]'
                               : 'border-gray-100 bg-gray-50/70 cursor-not-allowed'
@@ -790,7 +957,9 @@ const Profile = () => {
               <div className="bg-white rounded-[28px] p-6 md:p-8 border border-gray-100 shadow-sm flex flex-col">
                 <div className="border-b border-gray-100 pb-5 mb-6">
                   <h2 className="text-xl font-extrabold text-gray-900">Order History</h2>
-                  <p className="text-xs text-gray-400 font-medium mt-0.5">Track your healthcare products orders</p>
+                  <p className="text-xs text-gray-400 font-medium mt-0.5">
+                    Track your healthcare products orders • Pending orders can be cancelled within 2 hours
+                  </p>
                 </div>
 
                 {loadingOrders ? (
@@ -812,9 +981,17 @@ const Profile = () => {
                 ) : (
                   <div className="space-y-4">
                     {userOrders.map((order, idx) => {
-                      const orderDate = order.createdAt && !isNaN(new Date(order.createdAt).getTime())
-                        ? new Date(order.createdAt).toLocaleDateString()
+                      const createdMs = order.createdAt && !isNaN(new Date(order.createdAt).getTime())
+                        ? new Date(order.createdAt).getTime()
+                        : 0;
+                      const orderDate = createdMs
+                        ? new Date(createdMs).toLocaleString()
                         : 'N/A';
+
+                      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+                      const remainingCancelMs = createdMs ? (TWO_HOURS_MS - (nowTick - createdMs)) : 0;
+                      const isPendingOrder = !order.status || order.status === 'Pending';
+                      const canCancelOrder = isPendingOrder && remainingCancelMs > 0;
                       
                       const statusColor = order.status === 'Completed' || order.status === 'Delivered'
                         ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
@@ -851,13 +1028,38 @@ const Profile = () => {
                             ))}
                           </div>
 
-                          <div className="flex items-center justify-between border-t border-gray-200/60 pt-3 text-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-gray-200/60 pt-3 text-xs">
                             <span className="text-gray-500 font-semibold">Payment: <span className="uppercase font-bold text-gray-800">{order.paymentMethod || 'COD'}</span></span>
                             <div className="text-right">
                               <span className="text-gray-400 font-medium mr-2">Total:</span>
                               <span className="font-extrabold text-base text-[#FA9132]">Rs. {order.total ? order.total.toLocaleString() : '0'}</span>
                             </div>
                           </div>
+
+                          {/* 2-Hour Customer Cancellation Row */}
+                          {isPendingOrder && (
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-dashed border-gray-200">
+                              {canCancelOrder ? (
+                                <>
+                                  <span className="text-[11px] font-semibold text-amber-600 flex items-center gap-1.5">
+                                    ⏱️ {formatRemainingCancelTime(remainingCancelMs)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={cancellingOrderId === order._id}
+                                    onClick={() => handleCancelOrder(order)}
+                                    className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-bold text-xs transition shadow-sm self-start sm:self-auto"
+                                  >
+                                    {cancellingOrderId === order._id ? 'Cancelling...' : 'Cancel Order'}
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[11px] text-gray-400 font-medium">
+                                  Cancellation window (2 hours) has expired for this order.
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

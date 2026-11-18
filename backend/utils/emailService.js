@@ -60,7 +60,7 @@ async function sendOrderConfirmationEmail(email, customerName, order) {
     <tr>
       <td style="padding:8px 12px; border-bottom:1px solid #f0f0f0;">${item.name}</td>
       <td style="padding:8px 12px; border-bottom:1px solid #f0f0f0; text-align:center;">${item.quantity}</td>
-      <td style="padding:8px 12px; border-bottom:1px solid #f0f0f0; text-align:right;">$${(item.price * item.quantity).toFixed(2)}</td>
+      <td style="padding:8px 12px; border-bottom:1px solid #f0f0f0; text-align:right;">Rs. ${(item.price * item.quantity).toLocaleString()}</td>
     </tr>
   `).join('');
 
@@ -93,10 +93,10 @@ async function sendOrderConfirmationEmail(email, customerName, order) {
       </table>
 
       <div style="text-align:right; font-size:14px; color:#555; margin-bottom:24px;">
-        <div>Subtotal: <strong>$${order.subtotal.toFixed(2)}</strong></div>
-        <div>Delivery: <strong>$${order.deliveryFee.toFixed(2)}</strong></div>
-        ${order.discount > 0 ? `<div>Discount: <strong>-$${order.discount.toFixed(2)}</strong></div>` : ''}
-        <div style="font-size:16px; color:#1a1a1a; margin-top:8px;">Total: <strong style="color:#FA9132;">$${order.total.toFixed(2)}</strong></div>
+        <div>Subtotal: <strong>Rs. ${order.subtotal ? order.subtotal.toLocaleString() : '0'}</strong></div>
+        <div>Delivery: <strong>Rs. ${order.deliveryFee ? order.deliveryFee.toLocaleString() : '0'}</strong></div>
+        ${order.discount > 0 ? `<div>Discount: <strong>-Rs. ${order.discount.toLocaleString()}</strong></div>` : ''}
+        <div style="font-size:16px; color:#1a1a1a; margin-top:8px;">Total: <strong style="color:#FA9132;">Rs. ${order.total ? order.total.toLocaleString() : '0'}</strong></div>
       </div>
 
       <div style="background:#f9f9f9; border-radius:12px; padding:16px 20px; font-size:13px; color:#555;">
@@ -110,7 +110,7 @@ async function sendOrderConfirmationEmail(email, customerName, order) {
     </div>
   `;
 
-  const text = `Hi ${customerName}, your Doggocare order #${order.orderCode || order._id} has been confirmed! Total: $${order.total.toFixed(2)}. We'll notify you when it's on the way.`;
+  const text = `Hi ${customerName}, your Doggocare order #${order.orderCode || order._id} has been confirmed! Total: Rs. ${order.total ? order.total.toLocaleString() : '0'}. We'll notify you when it's on the way.`;
   return sendMail({ to: email, subject, text, html });
 }
 
@@ -150,4 +150,140 @@ async function sendDeliveryEmail(email, customerName, order, reviewToken) {
   return sendMail({ to: email, subject, text, html });
 }
 
-module.exports = { sendVerificationEmail, sendOrderConfirmationEmail, sendDeliveryEmail };
+// ─── Diagnosis Report Email ──────────────────────────────────────────────────
+async function sendDiagnosisReportEmail(email, reportData) {
+  const { petName, age, gender, disease, confidence, careGuidelines, diagnosisId } = reportData;
+  const isHealthy = (disease || '').toLowerCase() === 'healthy';
+  const confidencePercent = typeof confidence === 'number'
+    ? (confidence > 1 ? confidence : confidence * 100).toFixed(1)
+    : '90.0';
+
+  const subject = isHealthy
+    ? `🐾 Doggocare Report: ${petName || 'Buddy'}'s Skin Analysis – Healthy! ✅`
+    : `🐾 Doggocare Report: ${petName || 'Buddy'}'s Skin Analysis – ${disease} Result 📋`;
+
+  const guidelinesList = (careGuidelines && careGuidelines.length > 0)
+    ? careGuidelines
+    : [
+        'Keep the infected/affected area clean and dry.',
+        'Prevent your dog from scratching or biting the affected area.',
+        'Use gentle, hypoallergenic or veterinarian-prescribed shampoos.',
+        'Consult a certified veterinarian for clinical diagnosis and prescription medication.',
+        'Wash and sanitize bedding, collars, and grooming brushes frequently.'
+      ];
+
+  const guidelinesHtml = guidelinesList
+    .map((g, idx) => `
+      <li style="margin-bottom: 10px; color: #374151; font-size: 14px; line-height: 1.6;">
+        <strong style="color: #FA9132;">${idx + 1}.</strong> ${g}
+      </li>
+    `)
+    .join('');
+
+  const formattedDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const html = `
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 620px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #f0f0f0; border-radius: 16px;">
+      <!-- Header -->
+      <div style="text-align: center; margin-bottom: 28px; border-bottom: 2px solid #FFF3E6; padding-bottom: 20px;">
+        <h1 style="color: #FA9132; margin: 0 0 4px; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">🐾 Doggocare</h1>
+        <p style="color: #888; margin: 0; font-size: 13px; font-weight: 500;">Canine Skin Health Diagnostic Report</p>
+      </div>
+
+      <!-- Report Greeting & Date -->
+      <div style="margin-bottom: 20px; font-size: 13px; color: #6b7280; display: flex; justify-content: space-between;">
+        <span><strong>Report Date:</strong> ${formattedDate}</span>
+        ${diagnosisId ? `<span style="color: #9ca3af; float: right;">Report ID: #${String(diagnosisId).slice(-6)}</span>` : ''}
+      </div>
+
+      <!-- Pet Profile Card -->
+      <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; font-weight: bold;">
+          Pet Information
+        </p>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+          <tr>
+            <td style="padding: 4px 0; color: #6b7280; width: 33%;"><strong>Name:</strong> <span style="color: #111827;">${petName || 'Buddy'}</span></td>
+            <td style="padding: 4px 0; color: #6b7280; width: 33%;"><strong>Age:</strong> <span style="color: #111827;">${age || 'Unknown'}</span></td>
+            <td style="padding: 4px 0; color: #6b7280; width: 33%;"><strong>Gender:</strong> <span style="color: #111827;">${gender || 'Unknown'}</span></td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Result Card -->
+      <div style="background: ${isHealthy ? '#ECFDF5' : '#FFF7ED'}; border: 2px solid ${isHealthy ? '#10B981' : '#FA9132'}; border-radius: 14px; padding: 22px 20px; margin-bottom: 26px;">
+        <div style="margin-bottom: 8px;">
+          <span style="float: right; background: ${isHealthy ? '#10B981' : '#FA9132'}; color: #fff; font-weight: bold; font-size: 12px; padding: 4px 10px; border-radius: 20px;">
+            ${confidencePercent}% Confidence
+          </span>
+          <h2 style="margin: 0; font-size: 20px; color: ${isHealthy ? '#065F46' : '#9A3412'}; font-weight: 800;">
+            ${isHealthy ? '✅ Healthy Canine Skin' : `⚠️ Detected Condition: ${disease}`}
+          </h2>
+        </div>
+        <div style="clear: both;"></div>
+        <p style="margin: 10px 0 0; color: ${isHealthy ? '#047857' : '#7C2D12'}; font-size: 14px; line-height: 1.5;">
+          ${isHealthy
+            ? `Good news! The uploaded image indicates that <strong>${petName || 'your dog'}</strong>'s skin appears healthy with no signs of active Ringworm, Dermatitis, or Demodicosis.`
+            : `The image analysis and symptom evaluation indicate that <strong>${petName || 'your dog'}</strong> is likely affected by <strong>${disease}</strong>. We recommend consulting a veterinarian to confirm and begin treatment.`
+          }
+        </p>
+      </div>
+
+      <!-- Care Guidelines -->
+      <div style="margin-bottom: 26px;">
+        <h3 style="color: #111827; font-size: 16px; margin: 0 0 12px; font-weight: 700; border-left: 4px solid #FA9132; padding-left: 10px;">
+          🩺 Recommended Care Guidelines
+        </h3>
+        <ul style="margin: 0; padding-left: 6px; list-style-type: none;">
+          ${guidelinesHtml}
+        </ul>
+      </div>
+
+      <!-- Action Box: Visit Store -->
+      <div style="background: #FFF8F0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+        <p style="margin: 0 0 12px; color: #4b5563; font-size: 14px; font-weight: 500;">
+          Need veterinarian-approved soothing shampoos, anti-parasitic sprays, or nutrition products?
+        </p>
+        <a href="http://localhost:5173/store"
+           style="display: inline-block; background: #FA9132; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 12px 28px; border-radius: 10px;">
+          🛍️ Browse Doggocare Store
+        </a>
+      </div>
+
+      <!-- Disclaimer -->
+      <div style="background: #F3F4F6; border-radius: 10px; padding: 14px 16px; margin-bottom: 24px; font-size: 12px; color: #6b7280; line-height: 1.5;">
+        <strong>⚠️ Medical Disclaimer:</strong> This report is generated by an automated AI computer-vision screening tool for educational and preliminary screening purposes. It does not replace a clinical examination, skin scrape, or prescription diagnosis by a licensed veterinarian.
+      </div>
+
+      <!-- Footer -->
+      <div style="text-align: center; border-top: 1px solid #E5E7EB; padding-top: 18px; font-size: 12px; color: #9ca3af;">
+        <p style="margin: 0 0 4px;">🐾 Doggocare – Caring for your furry family</p>
+        <p style="margin: 0;">Need assistance? Contact us at support@doggocare.com</p>
+      </div>
+    </div>
+  `;
+
+  const text = `Doggocare Skin Diagnosis Report for ${petName} (${age}, ${gender}):
+Result: ${disease} (${confidencePercent}% confidence)
+Date: ${formattedDate}
+
+Care Guidelines:
+${guidelinesList.map((g, i) => `${i + 1}. ${g}`).join('\n')}
+
+Visit our store: http://localhost:5173/store
+
+Disclaimer: This report is for informational purposes and does not replace a veterinary consultation.`;
+
+  return sendMail({ to: email, subject, text, html });
+}
+
+module.exports = {
+  sendVerificationEmail,
+  sendOrderConfirmationEmail,
+  sendDeliveryEmail,
+  sendDiagnosisReportEmail
+};

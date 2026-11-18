@@ -326,15 +326,7 @@ const Contact = () => {
                 >
                   <FiTrash2 className="text-xs" /> Clear
                 </button>
-                <button
-                  onClick={() => {
-                    setChatStarted(false);
-                    localStorage.removeItem('chatUserEmail');
-                  }}
-                  className="text-xs bg-white/15 hover:bg-white/25 px-3 py-1 rounded-full font-semibold transition"
-                >
-                  Switch Account
-                </button>
+                
               </div>
             )}
           </div>
