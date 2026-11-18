@@ -266,6 +266,9 @@ router.put('/:id', async (req, res) => {
     if (previousStatus === 'Delivered') {
       return res.status(400).json({ message: 'This order is already Delivered and its status cannot be changed.' });
     }
+    if (previousStatus === 'Cancelled') {
+      return res.status(400).json({ message: 'This order has been Cancelled and its status cannot be changed.' });
+    }
     existingOrder.status = status;
     const order = await existingOrder.save();
 

@@ -493,6 +493,11 @@ const AdminDashboard = () => {
       return;
     }
 
+    if (viewingOrderDetails.status === 'Cancelled') {
+      triggerToast('This order has been Cancelled and its status cannot be changed.');
+      return;
+    }
+
     if (!modalOrderStatus || modalOrderStatus === viewingOrderDetails.status) {
       triggerToast('Please select a different status to update.');
       return;
@@ -1536,6 +1541,11 @@ const AdminDashboard = () => {
                 <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-xs font-semibold">
                   <span>✅</span>
                   <span>This order has been marked as <strong>Delivered</strong>. Its status is now locked and cannot be changed.</span>
+                </div>
+              ) : viewingOrderDetails.status === 'Cancelled' ? (
+                <div className="flex items-center gap-2.5 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-xs font-semibold">
+                  <span>🚫</span>
+                  <span>This order has been <strong>Cancelled</strong>. Its status is now locked and cannot be changed.</span>
                 </div>
               ) : (
                 <form onSubmit={handleUpdateOrderStatus} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
